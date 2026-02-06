@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Derivatives MC: First & Second</title>
+
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        background: #f6f6f6;
+        padding: 20px;
+        text-align: center;
+      }
+
+      canvas {
+        background: white;
+        border: 3px solid #ccc;
+        margin: 10px;
+        cursor: crosshair;
+      }
+
+      h3 {
+        margin-top: 30px;
+      }
+
+      .options {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 20px;
+      }
+
+      .option {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .select {
+        margin-top: 8px;
+        padding: 12px 26px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .select:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      .correct {
+        border-color: #2ecc71 !important;
+      }
+      .wrong {
+        border-color: #e74c3c !important;
+      }
+
+      .tooltip {
+        position: fixed;
+        background: #222;
+        color: white;
+        padding: 4px 7px;
+        font-size: 13px;
+        border-radius: 4px;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      .streak {
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 15px;
+      }
+
+      .graph-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 18px;
+      }
+
+      .legend {
+        font-size: 14px;
+        text-align: left;
+        margin-top: 6px;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 6px;
+        gap: 8px;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+
+      .dot.blue {
+        background: #1f5bd8;
+      }
+      .dot.red {
+        background: #e74c3c;
+      }
+      .dot.yellow {
+        background: #f39c12;
+      }
+      .dot.purple {
+        background: #8e44ad;
+      }
+      .dot.black {
+        background: #000;
+      }
+      .dot.grey {
+        background: #777;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="streak">🔥 Streak: <span id="streak">0</span></div>
+
+    <h2>Given the function below:</h2>
+    <div class="graph-row">
+      <canvas id="poly" width="700" height="250"></canvas>
+
+      <div class="legend">
+        <div class="legend-item">
+          <span class="dot blue"></span>
+          Turning point
+        </div>
+        <div class="legend-item">
+          <span class="dot red"></span>
+          Turning point on x-axis
+        </div>
+        <div class="legend-item">
+          <span class="dot yellow"></span>
+          Stationary inflection on x-axis
+        </div>
+        <div class="legend-item">
+          <span class="dot purple"></span>
+          Inflection point
+        </div>
+        <div class="legend-item">
+          <span class="dot black"></span>
+          x-intercept
+        </div>
+        <div class="legend-item">
+          <span class="dot grey"></span>
+          y-intercept
+        </div>
+      </div>
+    </div>
+
+    <h3>Stage 1: Which graph is the <em>first derivative</em>?</h3>
+    <div id="stage1" class="options"></div>
+
+    <h3 id="stage2title" class="hidden">
+      Stage 2: Which graph is the <em>second derivative</em>?
+    </h3>
+    <div id="stage2" class="options hidden"></div>
+
+    <button onclick="newQuestion()" class="select" style="margin-top: 30px">
+      New question
+    </button>
+
+    <div id="tooltip" class="tooltip" style="display: none"></div>
+
+    <script>
+      let xMin = -5;
+      let xMax = 5;
+
+      const tooltip = document.getElementById("tooltip");
+      const streakEl = document.getElementById("streak");
+
+      let poly;
+      let locked1 = false;
+      let stage1Correct = false;
+      let stage2Correct = false;
+      let streak = 0;
+
+      const mapX = (x, w) => ((x - xMin) / (xMax - xMin)) * w;
+      const mapY = (y, min, max, h) => h - ((y - min) / (max - min)) * h;
+      const invMapX = (px, w) => xMin + (px / w) * (xMax - xMin);
+
+      const h = 1e-3;
+      const d1 = (f, x) => (f(x + h) - f(x - h)) / (2 * h);
+      const d2 = (f, x) => (f(x + h) - 2 * f(x) + f(x - h)) / (h * h);
+
+      function findRoot(g, a, b, tol = 1e-6, it = 40) {
+        let fa = g(a),
+          fb = g(b);
+        if (!isFinite(fa) || !isFinite(fb) || fa * fb > 0) return null;
+        for (let i = 0; i < it; i++) {
+          const m = (a + b) / 2,
+            fm = g(m);
+          if (Math.abs(fm) < tol) return m;
+          fa * fm < 0 ? ((b = m), (fb = fm)) : ((a = m), (fa = fm));
+        }
+        return (a + b) / 2;
+      }
+
+      function dedupe(xs, eps = 1e-3) {
+        xs.sort((a, b) => a - b);
+        return xs.filter((x, i) => i === 0 || Math.abs(x - xs[i - 1]) > eps);
+      }
+
+      function findNonStationaryInflections(f) {
+        const out = [];
+        const step = 0.1;
+        const tol = 1e-3;
+
+        for (let x = xMin; x <= xMax - step; x += step) {
+          const a = d2(f, x);
+          const b = d2(f, x + step);
+
+          if (!isFinite(a) || !isFinite(b)) continue;
+
+          // must bracket a genuine root
+          if (a * b > 0) continue;
+
+          const r = findRoot((t) => d2(f, t), x, x + step);
+          if (r === null) continue;
+
+          const left = d2(f, r - step);
+          const right = d2(f, r + step);
+
+          // REQUIRE real concavity change
+          if (Math.sign(left) === Math.sign(right)) continue;
+
+          const y = f(r);
+          const slope = d1(f, r);
+
+          // exclude stationary or x-axis cases
+          if (Math.abs(slope) < tol) continue;
+          if (Math.abs(y) < tol) continue;
+
+          out.push(r);
+        }
+
+        return dedupe(out, 0.2);
+      }
+
+      function findStationaryPoints(f) {
+        const out = [];
+        const tol = 1e-4;
+        const step = 0.05;
+
+        let prev = d1(f, xMin);
+
+        for (let x = xMin + step; x <= xMax - step; x += step) {
+          const curr = d1(f, x);
+          const next = d1(f, x + step);
+          if (prev * curr < 0) {
+            const r = findRoot((t) => d1(f, t), x - step, x);
+            if (r !== null) out.push(r);
+          }
+          if (
+            Math.abs(curr) < tol &&
+            Math.abs(prev) < tol &&
+            Math.abs(next) < tol
+          ) {
+            out.push(x);
+          }
+          if (
+            Math.abs(curr) < tol &&
+            Math.abs(prev) > tol &&
+            Math.abs(next) > tol
+          ) {
+            out.push(x);
+          }
+
+          prev = curr;
+        }
+
+        return dedupe(out, 0.1);
+      }
+
+      function findXIntercepts(f) {
+        const out = [];
+        for (let x = xMin; x < xMax; x += 0.1) {
+          const r = findRoot(f, x, x + 0.1);
+          if (r !== null) out.push(r);
+        }
+        return dedupe(out);
+      }
+
+      function findFeatures(f, { allowInflections = true } = {}) {
+        const tol = 1e-4;
+        const raw = [];
+        let minY = Infinity,
+          maxY = -Infinity;
+        for (let x = xMin; x <= xMax; x += 0.1) {
+          const y = f(x);
+          if (isFinite(y)) {
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+          }
+        }
+        if (Math.abs(maxY - minY) < tol) {
+          return [{ x: 0, y: f(0), type: "y-intercept" }];
+        }
+
+        raw.push({ x: 0, y: f(0), type: "y-intercept" });
+        for (const x of findStationaryPoints(f)) {
+          const y = f(x);
+          const eps = 0.05;
+
+          const xl = Math.max(xMin, x - eps);
+          const xr = Math.min(xMax, x + eps);
+
+          const ddL = d2(f, xl);
+          const ddR = d2(f, xr);
+
+          const sL = Math.abs(ddL) < tol ? 0 : Math.sign(ddL);
+          const sR = Math.abs(ddR) < tol ? 0 : Math.sign(ddR);
+
+          const isInflection = sL !== 0 && sR !== 0 && sL !== sR;
+          const base = isInflection ? "stationary-inflection" : "turning point";
+
+          raw.push({
+            x,
+            y,
+            type: Math.abs(y) < tol ? `${base}+x-intercept` : base,
+          });
+        }
+
+        for (const x of findXIntercepts(f)) {
+          const y = 0;
+          const d = d1(f, x);
+
+          const eps = 0.05;
+          const xl = Math.max(xMin, x - eps);
+          const xr = Math.min(xMax, x + eps);
+
+          const ddL = d2(f, xl);
+          const ddR = d2(f, xr);
+
+          const sL = Math.abs(ddL) < tol ? 0 : Math.sign(ddL);
+          const sR = Math.abs(ddR) < tol ? 0 : Math.sign(ddR);
+
+          const stationary =
+            Math.abs(d) < 5e-3 || (Math.abs(ddL) < tol && Math.abs(ddR) < tol);
+          const concavityChange = sL !== 0 && sR !== 0 && sL !== sR;
+
+          if (stationary && concavityChange) {
+            raw.push({ x, y, type: "stationary-inflection+x-intercept" });
+          } else if (concavityChange) {
+            raw.push({ x, y, type: "inflection+x-intercept" });
+          } else {
+            raw.push({ x, y, type: "x-intercept" });
+          }
+        }
+
+        if (allowInflections) {
+          for (const x of findNonStationaryInflections(f)) {
+            raw.push({
+              x,
+              y: f(x),
+              type: "inflection",
+            });
+          }
+        }
+
+        const merged = [];
+
+        for (const p of raw) {
+          const q = merged.find((m) => Math.abs(m.x - p.x) < 1e-3);
+
+          if (q) {
+            q.types.add(p.type);
+          } else {
+            merged.push({
+              x: p.x,
+              y: p.y,
+              types: new Set([p.type]),
+            });
+          }
+        }
+
+        return merged.map((p) => {
+          if (p.types.has("stationary-inflection+x-intercept")) {
+            p.types.delete("x-intercept");
+          }
+          if (p.types.has("stationary-inflection")) {
+            p.types.delete("x-intercept");
+          }
+          if (p.types.has("stationary-inflection+x-intercept")) {
+            p.types.clear();
+            p.types.add("stationary-inflection+x-intercept");
+          }
+
+          return {
+            x: p.x,
+            y: p.y,
+            type: [...p.types].sort().join("+"),
+          };
+        });
+      }
+
+      function randomPolynomial() {
+        let remaining = Math.floor(Math.random() * 3) + 2;
+        const roots = [];
+        while (remaining > 0) {
+          let r;
+          do {
+            r = Math.random() * 10 - 5;
+          } while (roots.some((x) => Math.abs(x.value - r) < 0.7));
+          const maxMult = Math.min(3, remaining);
+          const mult =
+            Math.random() < 0.25 && maxMult >= 3
+              ? 3
+              : Math.random() < 0.5 && maxMult >= 2
+                ? 2
+                : 1;
+          roots.push({ value: r, mult });
+          remaining -= mult;
+        }
+        const k = (Math.random() * 1.5 + 0.5) * (Math.random() < 0.5 ? -1 : 1);
+        return { roots, k };
+      }
+
+      const P = (p, x) =>
+        p.roots.reduce((y, r) => y * Math.pow(x - r.value, r.mult), p.k);
+      const dP = (p, x) => d1((t) => P(p, t), x);
+      const d2P = (p, x) => d2((t) => P(p, t), x);
+
+      function scale(f) {
+        const tol = 1e-4;
+        const feats = findFeatures(f);
+
+        const xs = feats
+          .filter((p) => p.type.includes("x-intercept"))
+          .map((p) => p.x)
+          .concat(0);
+
+        let xLo = Math.min(...xs) - 1;
+        let xHi = Math.max(...xs) + 1;
+
+        if (!isFinite(xLo) || !isFinite(xHi) || xLo === xHi) {
+          xLo = -5;
+          xHi = 5;
+        }
+
+        let minSample = Infinity,
+          maxSample = -Infinity;
+        for (let x = xLo; x <= xHi; x += 0.1) {
+          const y = f(x);
+          if (isFinite(y)) {
+            minSample = Math.min(minSample, y);
+            maxSample = Math.max(maxSample, y);
+          }
+        }
+
+        if (Math.abs(maxSample - minSample) < tol) {
+          const y = minSample;
+          const pad = Math.max(1, Math.abs(y) * 0.2);
+
+          let minY = y - pad;
+          let maxY = y + pad;
+
+          const extra = 0.5 * pad;
+
+          if (minY > 0) {
+            minY = -extra;
+            maxY += extra;
+          }
+
+          if (maxY < 0) {
+            maxY = extra;
+            minY -= extra;
+          }
+
+          return {
+            xLo,
+            xHi,
+            minY,
+            maxY,
+          };
+        }
+
+        const ys = feats
+          .filter(
+            (p) =>
+              p.type.includes("turning") ||
+              p.type.includes("stationary") ||
+              p.type.includes("inflection"),
+          )
+          .map((p) => p.y)
+          .concat(0);
+
+        let minY = Math.min(...ys);
+        let maxY = Math.max(...ys);
+
+        if (!isFinite(minY) || !isFinite(maxY) || minY === maxY) {
+          minY = minSample;
+          maxY = maxSample;
+        }
+
+        const pad = 0.05 * Math.max(Math.abs(minY), Math.abs(maxY), 1);
+        minY -= pad;
+        maxY += pad;
+
+        if (minY > 0) minY = 0;
+        if (maxY < 0) maxY = 0;
+
+        return { xLo, xHi, minY, maxY };
+      }
+
+      function drawAxes(ctx, w, h, minY, maxY) {
+        ctx.strokeStyle = "#aaa";
+        ctx.beginPath();
+        ctx.moveTo(mapX(xMin, w), mapY(0, minY, maxY, h));
+        ctx.lineTo(mapX(xMax, w), mapY(0, minY, maxY, h));
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(mapX(0, w), mapY(minY, minY, maxY, h));
+        ctx.lineTo(mapX(0, w), mapY(maxY, minY, maxY, h));
+        ctx.stroke();
+      }
+
+      function drawCurve(ctx, w, h, f, minY, maxY, col) {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        let first = true;
+        for (let x = xMin; x <= xMax; x += 0.01) {
+          const y = f(x);
+          if (!isFinite(y)) continue;
+          const px = mapX(x, w),
+            py = mapY(y, minY, maxY, h);
+          first ? (ctx.moveTo(px, py), (first = false)) : ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+
+      function drawPoints(ctx, w, h, pts, minY, maxY) {
+        const tol = 1e-4;
+
+        for (const p of pts) {
+          let colour = "#000";
+
+          const onXAxis = Math.abs(p.y) < tol;
+          const isInflection = p.type.includes("inflection");
+          const isStationary = p.type.includes("stationary");
+          const isTurning = p.type.includes("turning");
+
+          if (isInflection && isStationary && onXAxis) {
+            colour = "#f39c12";
+          } else if (isInflection && !onXAxis) {
+            colour = "#8e44ad";
+          } else if (isTurning && onXAxis) {
+            colour = "#e74c3c";
+          } else if (isTurning) {
+            colour = "#1f5bd8";
+          } else if (p.type.includes("y-intercept")) {
+            colour = "#777";
+          }
+
+          ctx.fillStyle = colour;
+          ctx.beginPath();
+          ctx.arc(mapX(p.x, w), mapY(p.y, minY, maxY, h), 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function enableHover(c, pts, xLo, xHi) {
+        c.onmousemove = (e) => {
+          const r = c.getBoundingClientRect();
+          const x = xLo + ((e.clientX - r.left) / c.width) * (xHi - xLo);
+
+          let best = null;
+          let d = Infinity;
+
+          for (const p of pts) {
+            const dx = Math.abs(p.x - x);
+            if (dx < d) {
+              d = dx;
+              best = p;
+            }
+          }
+
+          if (best && d < 0.25) {
+            tooltip.style.display = "block";
+            tooltip.style.left = e.clientX + 12 + "px";
+            tooltip.style.top = e.clientY + 12 + "px";
+            tooltip.textContent = `${best.type}: (${best.x.toFixed(2)}, ${best.y.toFixed(2)})`;
+          } else {
+            tooltip.style.display = "none";
+          }
+        };
+
+        c.onmouseleave = () => (tooltip.style.display = "none");
+      }
+
+      function functionsLookSame(f, g) {
+        for (let x = xMin; x <= xMax; x += 0.1) {
+          if (Math.abs(f(x) - g(x)) > 0.05) return false;
+        }
+        return true;
+      }
+
+      function stage1Options(poly) {
+        const c = [
+          { fn: (x) => dP(poly, x), correct: true },
+          { fn: (x) => -dP(poly, x), correct: false },
+          { fn: (x) => dP(poly, x + 0.6), correct: false },
+          { fn: (x) => d2P(poly, x), correct: false },
+          { fn: (x) => dP(poly, x) - 1, correct: false },
+        ];
+        const o = [];
+        for (const x of c) {
+          if (!o.some((y) => functionsLookSame(x.fn, y.fn))) o.push(x);
+          if (o.length === 4) break;
+        }
+        return o;
+      }
+
+      function stage2Options(poly) {
+        const c = [
+          { fn: (x) => d2P(poly, x), correct: true },
+          { fn: (x) => -d2P(poly, x), correct: false },
+          { fn: (x) => d2P(poly, x + 0.6), correct: false },
+          { fn: (x) => dP(poly, x), correct: false },
+          { fn: (x) => d2P(poly, x) + 1, correct: false },
+        ];
+        const o = [];
+        for (const x of c) {
+          if (!o.some((y) => functionsLookSame(x.fn, y.fn))) o.push(x);
+          if (o.length === 4) break;
+        }
+        return o;
+      }
+
+      function buildStage(container, opts, col, onCorrect, onWrong) {
+        container.innerHTML = "";
+        opts.sort(() => Math.random() - 0.5);
+        const buttons = [];
+
+        for (const opt of opts) {
+          const wrap = document.createElement("div");
+          wrap.className = "option";
+
+          const c = document.createElement("canvas");
+          c.width = 300;
+          c.height = 200;
+
+          const btn = document.createElement("button");
+          btn.className = "select";
+          btn.textContent = "Select";
+
+          wrap.append(c, btn);
+          container.appendChild(wrap);
+          buttons.push(btn);
+
+          const ctx = c.getContext("2d");
+          const feats = findFeatures(opt.fn, { allowInflections: false });
+          const { xLo, xHi, minY, maxY } = scale(opt.fn);
+
+          const oldMin = xMin,
+            oldMax = xMax;
+          xMin = xLo;
+          xMax = xHi;
+
+          drawAxes(ctx, c.width, c.height, minY, maxY);
+          drawCurve(ctx, c.width, c.height, opt.fn, minY, maxY, col);
+          drawPoints(ctx, c.width, c.height, feats, minY, maxY);
+          enableHover(c, feats, xLo, xHi);
+
+          xMin = oldMin;
+          xMax = oldMax;
+
+          btn.onclick = () => {
+            buttons.forEach((b) => (b.disabled = true));
+            opt.correct
+              ? (c.classList.add("correct"), onCorrect())
+              : (c.classList.add("wrong"), onWrong());
+          };
+        }
+      }
+
+      const polyCanvas = document.getElementById("poly");
+      const polyCtx = polyCanvas.getContext("2d");
+
+      function newQuestion() {
+        if (!(stage1Correct && stage2Correct)) {
+          streak = 0;
+          streakEl.textContent = streak;
+        }
+
+        stage1Correct = false;
+        stage2Correct = false;
+        locked1 = false;
+
+        document.getElementById("stage2").classList.add("hidden");
+        document.getElementById("stage2title").classList.add("hidden");
+
+        poly = randomPolynomial();
+        const f = (x) => P(poly, x);
+        const feats = findFeatures(f);
+        const { xLo, xHi, minY, maxY } = scale(f);
+
+        const oldMin = xMin,
+          oldMax = xMax;
+        xMin = xLo;
+        xMax = xHi;
+
+        polyCtx.clearRect(0, 0, polyCanvas.width, polyCanvas.height);
+        drawAxes(polyCtx, polyCanvas.width, polyCanvas.height, minY, maxY);
+        drawCurve(
+          polyCtx,
+          polyCanvas.width,
+          polyCanvas.height,
+          f,
+          minY,
+          maxY,
+          "#1f5bd8",
+        );
+        drawPoints(
+          polyCtx,
+          polyCanvas.width,
+          polyCanvas.height,
+          feats,
+          minY,
+          maxY,
+        );
+        enableHover(polyCanvas, feats, xLo, xHi);
+
+        xMin = oldMin;
+        xMax = oldMax;
+
+        buildStage(
+          document.getElementById("stage1"),
+          stage1Options(poly),
+          "#d81f1f",
+          () => {
+            stage1Correct = true;
+            streak++;
+            streakEl.textContent = streak;
+            unlockStage2();
+          },
+          () => {
+            streak = 0;
+            streakEl.textContent = streak;
+          },
+        );
+      }
+
+      function unlockStage2() {
+        if (locked1) return;
+        locked1 = true;
+
+        document.getElementById("stage2").classList.remove("hidden");
+        document.getElementById("stage2title").classList.remove("hidden");
+
+        buildStage(
+          document.getElementById("stage2"),
+          stage2Options(poly),
+          "#8e44ad",
+          () => {
+            stage2Correct = true;
+            streak++;
+            streakEl.textContent = streak;
+          },
+          () => {
+            streak = 0;
+            streakEl.textContent = streak;
+          },
+        );
+      }
+
+      newQuestion();
+    </script>
+  </body>
+</html>
