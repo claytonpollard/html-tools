@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Sign Diagram Generator</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        background: #f0f2f5;
+        padding: 40px;
+        text-align: center;
+        font-size: 22px;
+      }
+
+      .controls {
+        margin-bottom: 25px;
+      }
+
+      #function {
+        margin: 20px 0;
+      }
+
+      .mainLayout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 40px;
+        align-items: start;
+      }
+
+      .leftPanel,
+      .rightPanel {
+        text-align: center;
+      }
+
+      #calculator {
+        width: 100%;
+        height: 450px;
+        margin-top: 20px;
+        border: 2px solid #ccc;
+        display: none;
+      }
+
+      .primaryBtn {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 12px 28px;
+        font-size: 16px;
+        font-weight: 600;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+        margin-top: 20px;
+      }
+
+      .primaryBtn:hover {
+        background: #1d4ed8;
+        transform: translateY(-1px);
+        box-shadow: 0 5px 12px rgba(0, 0, 0, 0.2);
+      }
+
+      .primaryBtn:active {
+        transform: translateY(1px);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+      }
+
+      .secondaryBtn {
+        background: #e5e7eb;
+        color: #111;
+        border: none;
+        padding: 8px 18px;
+        font-size: 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: 0.15s;
+        margin-top: 10px;
+      }
+
+      .secondaryBtn:hover {
+        background: #c7c8cc;
+        transform: translateY(-1px);
+        box-shadow: 0 5px 12px rgba(0, 0, 0, 0.2);
+      }
+
+      .secondaryBtn.active {
+        background: #2563eb;
+        color: white;
+      }
+
+      #options {
+        margin-top: 0;
+      }
+
+      .optionCard {
+        background: white;
+        padding: 15px;
+        margin: 20px 0;
+        width: 100%;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: 0.2s;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .optionCard:hover {
+        transform: scale(1.01);
+      }
+
+      @media (max-width: 1000px) {
+        .mainLayout {
+          grid-template-columns: 1fr;
+        }
+
+        #calculator {
+          height: 350px;
+        }
+      }
+
+      .yControls {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 20px;
+        margin-top: 20px;
+      }
+
+      .yGroup {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .yGroup input {
+        width: 80px;
+        padding: 4px 6px;
+        font-size: 16px;
+      }
+
+      .yControls .secondaryBtn {
+        margin-top: 0;
+      }
+
+      #graphCanvas {
+        width: 700px;
+        height: 450px;
+        margin: 20px auto 0 auto;
+        border: 2px solid #ccc;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mainLayout">
+      <div class="leftPanel">
+        <div class="controls">
+          Number of factors: <span id="factorCount">3</span><br />
+          <input
+            type="range"
+            min="1"
+            max="6"
+            value="3"
+            id="slider"
+          /><br /><br />
+          <button
+            class="secondaryBtn"
+            onclick="togglePolynomial()"
+            id="polyToggle"
+          >
+            Polynomial Only: OFF
+          </button>
+        </div>
+
+        <div id="function"></div>
+
+        <label>
+          <input type="checkbox" id="showGraph" />
+          Show sketch
+        </label>
+        <br /><br />
+
+        <canvas
+          id="graphCanvas"
+          width="700"
+          height="450"
+          style="
+            border: 2px solid #ccc;
+            display: none;
+            margin: 0 auto;
+            display: none;
+          "
+        >
+        </canvas>
+
+        <br /><br />
+
+        <div class="yControls">
+          <div class="yGroup">
+            <span>Y Min:</span>
+            <input type="number" id="yMinInput" value="-10" step="1" />
+          </div>
+
+          <div class="yGroup">
+            <span>Y Max:</span>
+            <input type="number" id="yMaxInput" value="10" step="1" />
+          </div>
+
+          <button class="secondaryBtn" onclick="updateYBounds()">Update</button>
+        </div>
+      </div>
+
+      <div class="rightPanel">
+        <div id="options"></div>
+        <button class="primaryBtn" onclick="newFunction()">New Function</button>
+      </div>
+    </div>
+
+    <script>
+      const slider = document.getElementById("slider");
+      const factorDisplay = document.getElementById("factorCount");
+      const showGraph = document.getElementById("showGraph");
+
+      let z = 1;
+      let numeratorRoots = [];
+      let denominatorRoots = [];
+      let currentExpression = "";
+      let polynomialOnly = false;
+
+      let correctPattern = null;
+
+      const graphCanvas = document.getElementById("graphCanvas");
+      const graphCtx = graphCanvas.getContext("2d");
+
+      function drawGraph() {
+        const yMin = parseFloat(document.getElementById("yMinInput").value);
+        const yMax = parseFloat(document.getElementById("yMaxInput").value);
+
+        const xMin = -6;
+        const xMax = 6;
+
+        const w = graphCanvas.width;
+        const h = graphCanvas.height;
+
+        graphCtx.clearRect(0, 0, w, h);
+
+        graphCtx.fillStyle = "white";
+        graphCtx.fillRect(0, 0, w, h);
+
+        function scaleX(x) {
+          return ((x - xMin) / (xMax - xMin)) * w;
+        }
+
+        function scaleY(y) {
+          return h - ((y - yMin) / (yMax - yMin)) * h;
+        }
+
+        graphCtx.strokeStyle = "black";
+        graphCtx.lineWidth = 1.5;
+        graphCtx.beginPath();
+
+        if (yMin < 0 && yMax > 0) {
+          const y0 = scaleY(0);
+          graphCtx.moveTo(0, y0);
+          graphCtx.lineTo(w, y0);
+        }
+
+        if (xMin < 0 && xMax > 0) {
+          const x0 = scaleX(0);
+          graphCtx.moveTo(x0, 0);
+          graphCtx.lineTo(x0, h);
+        }
+
+        graphCtx.stroke();
+
+        graphCtx.setLineDash([6, 6]);
+        graphCtx.strokeStyle = "#cc0000";
+        graphCtx.fillStyle = "#cc0000";
+
+        denominatorRoots.forEach((r) => {
+          const px = scaleX(r.r);
+
+          graphCtx.beginPath();
+          graphCtx.moveTo(px, 0);
+          graphCtx.lineTo(px, h);
+          graphCtx.stroke();
+
+          if (yMin < 0 && yMax > 0) {
+            const py = scaleY(0);
+
+            graphCtx.beginPath();
+            graphCtx.arc(px, py, 5, 0, 2 * Math.PI);
+            graphCtx.fill();
+
+            graphCtx.font = "16px sans-serif";
+            graphCtx.textAlign = "center";
+            graphCtx.fillText(r.r, px, py + 20);
+          }
+        });
+
+        graphCtx.setLineDash([]);
+        graphCtx.strokeStyle = "black";
+
+        graphCtx.lineWidth = 2;
+        graphCtx.strokeStyle = "black";
+        graphCtx.beginPath();
+
+        let first = true;
+        const GAP = 0.01;
+
+        for (let px = 0; px <= w; px++) {
+          const x = xMin + (px / w) * (xMax - xMin);
+
+          let nearAsymptote = false;
+          for (const r of denominatorRoots) {
+            if (Math.abs(x - r.r) < GAP) {
+              nearAsymptote = true;
+              break;
+            }
+          }
+
+          if (nearAsymptote) {
+            first = true;
+            continue;
+          }
+
+          let y = evaluate(x);
+
+          if (!isFinite(y)) {
+            first = true;
+            continue;
+          }
+
+          const py = scaleY(y);
+
+          if (first) {
+            graphCtx.moveTo(px, py);
+            first = false;
+          } else {
+            graphCtx.lineTo(px, py);
+          }
+        }
+
+        graphCtx.stroke();
+
+        graphCtx.fillStyle = "#2563eb";
+        graphCtx.font = "16px sans-serif";
+        graphCtx.textAlign = "center";
+
+        numeratorRoots.forEach((r) => {
+          if (polynomialOnly || !denominatorRoots.some((d) => d.r === r.r)) {
+            const px = scaleX(r.r);
+            const py = scaleY(0);
+
+            graphCtx.beginPath();
+            graphCtx.arc(px, py, 5, 0, 2 * Math.PI);
+            graphCtx.fill();
+
+            graphCtx.fillText(r.r, px, py + 20);
+          }
+        });
+      }
+
+      slider.oninput = function () {
+        factorDisplay.textContent = this.value;
+        generate();
+      };
+
+      showGraph.onchange = function () {
+        graphCanvas.style.display = showGraph.checked ? "block" : "none";
+        if (showGraph.checked) {
+          drawGraph();
+        }
+      };
+
+      function randomInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+
+      function getUniqueValues(count, min, max) {
+        const values = [];
+        while (values.length < count) {
+          const n = randomInt(min, max);
+          if (!values.includes(n)) {
+            values.push(n);
+          }
+        }
+        return values;
+      }
+
+      function buildFactor(root, power) {
+        let base;
+        if (root === 0) base = "x";
+        else if (root > 0) base = `(x-${root})`;
+        else base = `(x+${Math.abs(root)})`;
+        if (power === 1) return base;
+        return `${base}^{${power}}`;
+      }
+
+      function newFunction() {
+        generate();
+      }
+
+      function generate() {
+        z = Math.random() < 0.5 ? 1 : -1;
+
+        const factorCount = parseInt(slider.value);
+        const roots = getUniqueValues(factorCount, -5, 5);
+
+        numeratorRoots = [];
+        denominatorRoots = [];
+
+        const powers = [];
+        for (let i = 0; i < factorCount; i++) {
+          powers.push(randomInt(1, 3));
+        }
+
+        let split;
+
+        if (polynomialOnly) {
+          split = factorCount;
+        } else {
+          split = Math.ceil(factorCount / 2);
+        }
+
+        for (let i = 0; i < factorCount; i++) {
+          if (i < split) {
+            numeratorRoots.push({ r: roots[i], k: powers[i] });
+          } else {
+            denominatorRoots.push({ r: roots[i], k: powers[i] });
+          }
+        }
+
+        numeratorRoots.sort((a, b) => {
+          if (a.r === 0) return -1;
+          if (b.r === 0) return 1;
+          return 0;
+        });
+
+        let numerator = "";
+        numeratorRoots.forEach((f) => {
+          numerator += buildFactor(f.r, f.k);
+        });
+
+        let denominator = "";
+        denominatorRoots.forEach((f) => {
+          denominator += buildFactor(f.r, f.k);
+        });
+
+        let core;
+
+        if (polynomialOnly || denominator === "") {
+          core = numerator;
+          currentExpression = (z === -1 ? "-" : "") + core;
+
+          document.getElementById("function").innerHTML =
+            `\\(f(x)=${z === -1 ? "-" : ""}${numerator}\\)`;
+        } else {
+          core = `(${numerator})/(${denominator})`;
+          currentExpression = (z === -1 ? "-" : "") + core;
+
+          document.getElementById("function").innerHTML =
+            `\\(f(x)=${z === -1 ? "-" : ""}\\frac{${numerator}}{${denominator}}\\)`;
+        }
+
+        MathJax.typeset();
+
+        if (showGraph.checked) {
+          drawGraph();
+        }
+
+        renderOptions();
+      }
+
+      function evaluate(x) {
+        let num = 1;
+        let den = 1;
+
+        numeratorRoots.forEach((r) => {
+          num *= Math.pow(x - r.r, r.k);
+        });
+
+        if (!polynomialOnly) {
+          denominatorRoots.forEach((r) => {
+            den *= Math.pow(x - r.r, r.k);
+          });
+        }
+
+        return z * (num / den);
+      }
+
+      function generateSignOptions() {
+        const correctCritPoints = [];
+
+        numeratorRoots.forEach((r) =>
+          correctCritPoints.push({ x: r.r, type: "zero", k: r.k }),
+        );
+
+        if (!polynomialOnly) {
+          denominatorRoots.forEach((r) => {
+            correctCritPoints.push({ x: r.r, type: "asymptote", k: r.k });
+          });
+        }
+
+        correctCritPoints.sort((a, b) => a.x - b.x);
+
+        const xs = correctCritPoints.map((c) => c.x);
+        if (xs.length === 0) return null;
+
+        const testPoints = [];
+        testPoints.push(xs[0] - 1);
+        for (let i = 0; i < xs.length - 1; i++)
+          testPoints.push((xs[i] + xs[i + 1]) / 2);
+        testPoints.push(xs[xs.length - 1] + 1);
+
+        const correctPattern = testPoints.map((tp) =>
+          evaluate(tp) > 0 ? "+" : "-",
+        );
+
+        const correctOption = {
+          critPoints: JSON.parse(JSON.stringify(correctCritPoints)),
+          pattern: correctPattern,
+        };
+
+        const pool = [];
+
+        pool.push({
+          critPoints: JSON.parse(JSON.stringify(correctCritPoints)),
+          pattern: correctPattern.map((s) => (s === "+" ? "-" : "+")),
+        });
+
+        const evenMistake = correctPattern.slice();
+        for (let i = 1; i < correctCritPoints.length; i++) {
+          if (correctCritPoints[i - 1].k % 2 === 0)
+            evenMistake[i] = evenMistake[i - 1];
+        }
+        pool.push({
+          critPoints: JSON.parse(JSON.stringify(correctCritPoints)),
+          pattern: evenMistake,
+        });
+
+        const oddMistake = correctPattern.slice();
+        for (let i = 1; i < correctCritPoints.length; i++) {
+          if (correctCritPoints[i - 1].k % 2 === 1)
+            oddMistake[i] = oddMistake[i - 1];
+        }
+        pool.push({
+          critPoints: JSON.parse(JSON.stringify(correctCritPoints)),
+          pattern: oddMistake,
+        });
+
+        const mirroredCritPoints = correctCritPoints
+          .map((c) => ({
+            x: -c.x,
+            type: c.type,
+            k: c.k,
+          }))
+          .sort((a, b) => a.x - b.x);
+
+        const mirroredXs = mirroredCritPoints.map((c) => c.x);
+
+        const mirroredTestPoints = [];
+        mirroredTestPoints.push(mirroredXs[0] - 1);
+        for (let i = 0; i < mirroredXs.length - 1; i++)
+          mirroredTestPoints.push((mirroredXs[i] + mirroredXs[i + 1]) / 2);
+        mirroredTestPoints.push(mirroredXs[mirroredXs.length - 1] + 1);
+
+        const mirroredPattern = mirroredTestPoints.map((tp) =>
+          evaluate(-tp) > 0 ? "+" : "-",
+        );
+
+        pool.push({
+          critPoints: mirroredCritPoints,
+          pattern: mirroredPattern,
+        });
+
+        const wrongOptions = [];
+        const seen = new Set();
+
+        pool.forEach((p) => {
+          const key = JSON.stringify(p);
+          if (!seen.has(key) && key !== JSON.stringify(correctOption)) {
+            seen.add(key);
+            wrongOptions.push(p);
+          }
+        });
+
+        while (wrongOptions.length < 3) {
+          const randomPattern = correctPattern.map(() =>
+            Math.random() > 0.5 ? "+" : "-",
+          );
+
+          const randomOption = {
+            critPoints: JSON.parse(JSON.stringify(correctCritPoints)),
+            pattern: randomPattern,
+          };
+
+          const key = JSON.stringify(randomOption);
+
+          if (!seen.has(key) && key !== JSON.stringify(correctOption)) {
+            seen.add(key);
+            wrongOptions.push(randomOption);
+          }
+        }
+
+        wrongOptions.sort(() => Math.random() - 0.5);
+
+        const selected = [
+          correctOption,
+          wrongOptions[0],
+          wrongOptions[1],
+          wrongOptions[2],
+        ];
+
+        selected.sort(() => Math.random() - 0.5);
+
+        correctPatternGlobal = correctPattern;
+        correctCritGlobal = correctCritPoints;
+
+        return selected;
+      }
+
+      function renderOptions() {
+        const container = document.getElementById("options");
+        container.innerHTML = "";
+
+        const options = generateSignOptions();
+        if (!options) return;
+
+        options.forEach((opt) => {
+          const card = document.createElement("div");
+          card.className = "optionCard";
+
+          const canvas = document.createElement("canvas");
+          canvas.width = 700;
+          canvas.height = 120;
+          card.appendChild(canvas);
+
+          drawSignDiagram(canvas, opt.critPoints, opt.pattern);
+
+          card.onclick = function () {
+            handleAnswer(card, opt);
+          };
+
+          container.appendChild(card);
+        });
+      }
+
+      function drawSignDiagram(canvas, critPoints, pattern) {
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const w = canvas.width;
+        const h = canvas.height;
+        const margin = 60;
+        const yLine = h / 2;
+
+        const xs = critPoints.map((c) => c.x);
+        const minX = Math.min(...xs) - 1;
+        const maxX = Math.max(...xs) + 1;
+
+        function scale(x) {
+          return margin + ((x - minX) / (maxX - minX)) * (w - 2 * margin);
+        }
+
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(margin, yLine);
+        ctx.lineTo(w - margin, yLine);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(margin, yLine);
+        ctx.lineTo(margin + 12, yLine - 7);
+        ctx.lineTo(margin + 12, yLine + 7);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(w - margin, yLine);
+        ctx.lineTo(w - margin - 12, yLine - 7);
+        ctx.lineTo(w - margin - 12, yLine + 7);
+        ctx.closePath();
+        ctx.fill();
+
+        critPoints.forEach((c) => {
+          const px = scale(c.x);
+          if (c.type === "asymptote") {
+            ctx.setLineDash([6, 6]);
+            ctx.beginPath();
+            ctx.moveTo(px, yLine - 30);
+            ctx.lineTo(px, yLine + 30);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          } else {
+            ctx.beginPath();
+            ctx.moveTo(px, yLine - 10);
+            ctx.lineTo(px, yLine + 10);
+            ctx.stroke();
+          }
+          ctx.font = "22px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(c.x, px, yLine + 45);
+        });
+
+        const positions = [];
+        positions.push((minX + xs[0]) / 2);
+        for (let i = 0; i < xs.length - 1; i++)
+          positions.push((xs[i] + xs[i + 1]) / 2);
+        positions.push((xs[xs.length - 1] + maxX) / 2);
+
+        ctx.font = "bold 28px sans-serif";
+        ctx.textAlign = "center";
+
+        pattern.forEach((sign, i) => {
+          ctx.fillText(sign, scale(positions[i]), yLine - 25);
+        });
+      }
+
+      function handleAnswer(card, opt) {
+        const correct =
+          JSON.stringify(opt.pattern) ===
+            JSON.stringify(correctPatternGlobal) &&
+          JSON.stringify(opt.critPoints) === JSON.stringify(correctCritGlobal);
+
+        const cards = document.querySelectorAll(".optionCard");
+        cards.forEach((c) => (c.style.pointerEvents = "none"));
+
+        if (correct) {
+          card.style.background = "#d4edda";
+        } else {
+          card.style.background = "#f8d7da";
+        }
+      }
+
+      function togglePolynomial() {
+        polynomialOnly = !polynomialOnly;
+
+        const btn = document.getElementById("polyToggle");
+
+        if (polynomialOnly) {
+          btn.textContent = "Polynomial Only: ON";
+          btn.classList.add("active");
+        } else {
+          btn.textContent = "Polynomial Only: OFF";
+          btn.classList.remove("active");
+        }
+
+        newFunction();
+      }
+
+      function updateYBounds() {
+        const yMin = parseFloat(document.getElementById("yMinInput").value);
+        const yMax = parseFloat(document.getElementById("yMaxInput").value);
+
+        if (isNaN(yMin) || isNaN(yMax) || yMin >= yMax) {
+          alert("Invalid Y range");
+          return;
+        }
+
+        if (showGraph.checked) {
+          drawGraph();
+        }
+      }
+
+      generate();
+    </script>
+  </body>
+</html>
