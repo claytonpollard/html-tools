@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Transformations</title>
+
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        background: #f4f6fb;
+        text-align: center;
+        padding: 40px;
+      }
+
+      h1 {
+        margin-bottom: 15px;
+      }
+
+      .controls {
+        margin: 15px 0;
+        padding: 12px;
+        background: white;
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+
+      .controls label {
+        white-space: nowrap;
+        font-weight: 600;
+      }
+
+      .numbers {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 15px 0;
+      }
+
+      button {
+        padding: 8px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        background: #2563eb;
+        color: white;
+        cursor: pointer;
+        margin: 6px;
+      }
+
+      button:hover {
+        background: #1e4fd1;
+      }
+
+      #functionDisplay {
+        margin-top: 20px;
+        font-size: 22px;
+      }
+
+      canvas {
+        margin-top: 25px;
+        background: white;
+        border: 2px solid #ccc;
+        max-width: 100%;
+        height: auto;
+      }
+
+      .drop {
+        display: inline-block;
+        width: 50px;
+        height: 40px;
+        border: 2px dashed #999;
+        vertical-align: middle;
+        margin: 0 5px;
+        text-align: center;
+        line-height: 40px;
+        font-weight: 600;
+        border-radius: 6px;
+      }
+
+      .drop.green {
+        border-color: #22c55e;
+      }
+      .drop.orange {
+        border-color: #f97316;
+      }
+
+      .tile {
+        display: inline-block;
+        padding: 8px 12px;
+        margin: 5px;
+        border-radius: 6px;
+        cursor: grab;
+        font-weight: 600;
+        color: white;
+      }
+
+      .tile.green {
+        background: #22c55e;
+      }
+      .tile.orange {
+        background: #f97316;
+      }
+
+      .rowTitle {
+        margin-top: 15px;
+        font-weight: 600;
+      }
+
+      .mainLayout {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 40px;
+        margin-top: 30px;
+      }
+
+      .leftPanel {
+        flex-shrink: 0;
+      }
+
+      .transformBox {
+        padding: 20px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+      }
+
+      @media (max-width: 1400px) {
+        .mainLayout {
+          flex-direction: column;
+          align-items: center;
+        }
+      }
+
+      .viewControls {
+        margin-top: 15px;
+        background: white;
+        padding: 12px;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .viewControls input {
+        width: 60px;
+        padding: 4px;
+        margin: 0 6px;
+      }
+
+      .drop.correct {
+        border: 3px solid #22c55e;
+      }
+
+      .drop.incorrect {
+        border: 3px solid #ef4444;
+      }
+    </style>
+
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [
+            ["$", "$"],
+            ["\\(", "\\)"],
+          ],
+        },
+      };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  </head>
+
+  <body>
+    <h1>Transformations</h1>
+
+    <div class="controls">
+      <label><input type="checkbox" id="quadratic" checked /> Quadratic</label>
+      <label><input type="checkbox" id="cubic" checked /> Cubic</label>
+      <label><input type="checkbox" id="exp" checked /> Exponential</label>
+      <label><input type="checkbox" id="log" checked /> Log</label>
+      <label><input type="checkbox" id="trig" checked /> Trig</label>
+      <label><input type="checkbox" id="abs" checked /> Absolute</label>
+      <label><input type="checkbox" id="root" checked /> Root</label>
+      <label><input type="checkbox" id="piecewise" checked /> Piecewise</label>
+    </div>
+
+    <div class="controls">
+      <label><input type="checkbox" id="reflect" checked /> Reflections</label>
+      <label
+        ><input type="checkbox" id="vertDil" checked /> Vertical Dilation</label
+      >
+      <label
+        ><input type="checkbox" id="horizDil" checked /> Horizontal
+        Dilation</label
+      >
+      <label
+        ><input type="checkbox" id="horizTrans" checked /> Horizontal
+        Translation</label
+      >
+      <label
+        ><input type="checkbox" id="vertTrans" checked /> Vertical
+        Translation</label
+      >
+    </div>
+
+    <div id="functionDisplay"></div>
+
+    <div class="mainLayout">
+      <div class="leftPanel">
+        <canvas id="graph" width="650" height="420"></canvas>
+        <div class="viewControls">
+          <div>
+            X min:
+            <input type="number" id="xMinInput" value="-10" />
+            X max:
+            <input type="number" id="xMaxInput" value="10" />
+          </div>
+
+          <div>
+            Y min:
+            <input type="number" id="yMinInput" value="-10" />
+            Y max:
+            <input type="number" id="yMaxInput" value="10" />
+          </div>
+
+          <button onclick="updateView()">Update View</button>
+        </div>
+      </div>
+
+      <div class="rightPanel">
+        <div class="transformBox">
+          <p>
+            The red graph, $g(x)$ is given by transforming the blue graph,
+            $f(x)$. Drag the blocks to make $g(x)$.
+          </p>
+
+          <div style="font-size: 22px; margin-bottom: 15px">
+            $g(x) = $
+            <span class="drop green" data-slot="a"></span>
+            $f($
+            <span class="drop green" data-slot="b"></span>$x$
+            <span class="drop orange" data-slot="c"></span>
+            $)$
+            <span class="drop orange" data-slot="d"></span>
+          </div>
+
+          <div class="rowTitle">Dilations</div>
+          <div id="dilationBank"></div>
+
+          <div class="rowTitle">Translations</div>
+          <div id="translationBank"></div>
+
+          <br />
+          <button onclick="checkAnswer()">Check Answer</button>
+          <div id="feedback" style="margin-top: 10px; font-weight: 600"></div>
+        </div>
+      </div>
+    </div>
+
+    <br /><br />
+    <button onclick="generateFunction()">New Function</button>
+
+    <script>
+      const abOptions = ["-2", "-1", "-1/2", "1/2", "1", "2"];
+      const cdOptions = [
+        "-5",
+        "-4",
+        "-3",
+        "-2",
+        "-1",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+      ];
+      const reflectionsOnly = ["-1", "1"];
+
+      function randomChoice(arr) {
+        return arr[Math.floor(Math.random() * arr.length)];
+      }
+
+      function randomInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+
+      function parseFraction(str) {
+        if (str.includes("/")) {
+          const parts = str.split("/");
+          return Number(parts[0]) / Number(parts[1]);
+        }
+        return Number(str);
+      }
+
+      let currentA = "1";
+      let currentB = "1";
+      let currentC = "0";
+      let currentD = "0";
+      let currentAsymptote = null;
+      let currentTransformedAsymptote = null;
+      let currentDomainStart = null;
+      let currentHorizontalAsymptote = null;
+      function generateNumbers() {
+        const vertDil = document.getElementById("vertDil").checked;
+        const horizDil = document.getElementById("horizDil").checked;
+        const reflect = document.getElementById("reflect").checked;
+
+        const dilationFull = ["-2", "-1", "-1/2", "1/2", "1", "2"];
+        const dilationPositive = ["1/2", "1", "2"];
+        const reflectionsOnly = ["-1", "1"];
+
+        if (!vertDil && !horizDil && !reflect) {
+          currentA = "1";
+          currentB = "1";
+        } else {
+          if (vertDil) {
+            currentA = reflect
+              ? randomChoice(dilationFull)
+              : randomChoice(dilationPositive);
+          } else {
+            currentA = reflect ? randomChoice(reflectionsOnly) : "1";
+          }
+
+          if (horizDil) {
+            currentB = reflect
+              ? randomChoice(dilationFull)
+              : randomChoice(dilationPositive);
+          } else {
+            currentB = reflect ? randomChoice(reflectionsOnly) : "1";
+          }
+        }
+
+        const horizTrans = document.getElementById("horizTrans").checked;
+        const vertTrans = document.getElementById("vertTrans").checked;
+
+        currentC = horizTrans ? randomChoice(cdOptions) : "0";
+        currentD = vertTrans ? randomChoice(cdOptions) : "0";
+
+        const translationsOff = !horizTrans && !vertTrans;
+
+        if (translationsOff) {
+          document.querySelector('[data-slot="c"]').textContent =
+            formatTranslationDisplay("0");
+          document.querySelector('[data-slot="d"]').textContent =
+            formatTranslationDisplay("0");
+        }
+
+        const allOff = !vertDil && !horizDil && !reflect;
+
+        if (allOff) {
+          document.querySelector('[data-slot="a"]').textContent = "1";
+          document.querySelector('[data-slot="b"]').textContent = "1";
+        } else {
+          document.querySelector('[data-slot="a"]').textContent = "";
+          document.querySelector('[data-slot="b"]').textContent = "";
+        }
+      }
+
+      const canvas = document.getElementById("graph");
+      const ctx = canvas.getContext("2d");
+
+      let xMin = -10;
+      let xMax = 10;
+      let yMin = -10;
+      let yMax = 10;
+
+      function scaleX(x) {
+        return ((x - xMin) / (xMax - xMin)) * canvas.width;
+      }
+
+      function scaleY(y) {
+        return canvas.height - ((y - yMin) / (yMax - yMin)) * canvas.height;
+      }
+
+      function drawGrid() {
+        ctx.strokeStyle = "#e5e7eb";
+        ctx.lineWidth = 1;
+
+        for (let x = Math.ceil(xMin); x <= xMax; x++) {
+          ctx.beginPath();
+          ctx.moveTo(scaleX(x), 0);
+          ctx.lineTo(scaleX(x), canvas.height);
+          ctx.stroke();
+        }
+
+        for (let y = Math.ceil(yMin); y <= yMax; y++) {
+          ctx.beginPath();
+          ctx.moveTo(0, scaleY(y));
+          ctx.lineTo(canvas.width, scaleY(y));
+          ctx.stroke();
+        }
+      }
+
+      function drawAxes() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawGrid();
+
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.moveTo(scaleX(xMin), scaleY(0));
+        ctx.lineTo(scaleX(xMax), scaleY(0));
+        ctx.moveTo(scaleX(0), scaleY(yMin));
+        ctx.lineTo(scaleX(0), scaleY(yMax));
+        ctx.stroke();
+      }
+
+      function formatLatexNumber(val) {
+        if (val.includes("/")) {
+          const parts = val.split("/");
+          return `\\frac{${parts[0]}}{${parts[1]}}`;
+        }
+        return val;
+      }
+
+      function display(latex) {
+        const el = document.getElementById("functionDisplay");
+        el.innerHTML = `$${latex}$`;
+
+        MathJax.typesetPromise([el]);
+      }
+
+      const niceScales = [1, 2, -1, -2];
+
+      function bracket(r) {
+        return r < 0 ? `x+${Math.abs(r)}` : `x-${r}`;
+      }
+
+      let currentFunction = null;
+      let currentLatex = "";
+
+      function generateFunction() {
+        clearAnswerBoxes();
+        generateNumbers();
+        currentLeftFunc = null;
+        currentRightFunc = null;
+        currentSplit = null;
+        currentLeftClosed = false;
+        currentRightClosed = false;
+
+        const selected = [];
+        if (document.getElementById("quadratic").checked)
+          selected.push("quadratic");
+        if (document.getElementById("cubic").checked) selected.push("cubic");
+        if (document.getElementById("exp").checked) selected.push("exp");
+        if (document.getElementById("log").checked) selected.push("log");
+        if (document.getElementById("trig").checked) selected.push("trig");
+        if (document.getElementById("abs").checked) selected.push("abs");
+        if (document.getElementById("root").checked) selected.push("root");
+        if (document.getElementById("piecewise").checked)
+          selected.push("piecewise");
+
+        if (selected.length === 0) {
+          alert("Select at least one function type.");
+          return;
+        }
+
+        const type = randomChoice(selected);
+
+        let func;
+        let latex;
+
+        switch (type) {
+          case "quadratic": {
+            const r1 = randomInt(-4, 4);
+            let r2 = randomInt(-4, 4);
+            while (r2 === r1) r2 = randomInt(-4, 4);
+
+            const a = randomChoice(niceScales);
+
+            func = (x) => a * (x - r1) * (x - r2);
+
+            const roots = [r1, r2];
+
+            let zeroCount = roots.filter((r) => r === 0).length;
+            let nonZeroRoots = roots.filter((r) => r !== 0);
+
+            let factorPart = "";
+
+            if (zeroCount === 2) {
+              factorPart = "x^2";
+            } else if (zeroCount === 1) {
+              factorPart = "x";
+            }
+
+            nonZeroRoots.forEach((r) => {
+              factorPart += `\\left(${formatShift("x", r)}\\right)`;
+            });
+
+            latex = `${formatCoefficient(a)}${factorPart}`;
+
+            currentAsymptote = null;
+            currentDomainStart = null;
+            currentHorizontalAsymptote = null;
+            break;
+          }
+
+          case "cubic": {
+            const r1 = randomInt(-4, 4);
+            const r2 = randomInt(-4, 4);
+            const r3 = randomInt(-4, 4);
+
+            const a = randomChoice(niceScales);
+
+            func = (x) => a * (x - r1) * (x - r2) * (x - r3);
+
+            const roots = [r1, r2, r3];
+
+            let zeroCount = roots.filter((r) => r === 0).length;
+            let nonZeroRoots = roots.filter((r) => r !== 0);
+
+            let factorPart = "";
+
+            if (zeroCount === 3) {
+              factorPart = "x^3";
+            } else if (zeroCount === 2) {
+              factorPart = "x^2";
+            } else if (zeroCount === 1) {
+              factorPart = "x";
+            }
+
+            nonZeroRoots.forEach((r) => {
+              factorPart += `\\left(${formatShift("x", r)}\\right)`;
+            });
+
+            latex = `${formatCoefficient(a)}${factorPart}`;
+
+            currentAsymptote = null;
+            currentDomainStart = null;
+            currentHorizontalAsymptote = null;
+            break;
+          }
+
+          case "exp": {
+            const base = randomChoice([2, 3]);
+            const a = randomChoice(niceScales);
+            const c = randomInt(-2, 2);
+            const d = randomInt(-2, 2);
+
+            func = (x) => a * Math.pow(base, x - c) + d;
+            latex = `${formatCoefficient(a)}\\left(${base}\\right)^{${formatShift("x", c)}}${d !== 0 ? (d > 0 ? `+${d}` : d) : ""}`;
+
+            currentHorizontalAsymptote = d;
+            currentAsymptote = null;
+            currentDomainStart = null;
+            break;
+          }
+
+          case "log": {
+            const base = randomChoice([2, 10]);
+            const a = randomChoice(niceScales);
+            const c = randomInt(-2, 2);
+            const d = randomInt(-2, 2);
+
+            func = (x) =>
+              x > c ? (a * Math.log(x - c)) / Math.log(base) + d : null;
+            latex = `${formatCoefficient(a)}\\log_{${base}}\\left(${formatShift("x", c)}\\right)${formatConstant(d)}`;
+
+            currentHorizontalAsymptote = null;
+            currentDomainStart = null;
+
+            currentAsymptote = c;
+            break;
+          }
+
+          case "trig": {
+            const a = randomChoice(niceScales);
+            const funcType = randomChoice(["sin", "cos"]);
+            func = (x) => a * Math[funcType](x);
+            latex = `${formatCoefficient(a)}\\${funcType}(x)`;
+            currentAsymptote = null;
+            currentDomainStart = null;
+            currentHorizontalAsymptote = null;
+
+            break;
+          }
+
+          case "abs": {
+            const h = randomInt(-3, 3);
+            const k = randomInt(-3, 3);
+            const a = randomChoice(niceScales);
+            func = (x) => a * Math.abs(x - h) + k;
+            latex = `${formatCoefficient(a)}\\left|${formatShift("x", h)}\\right|${
+              k !== 0 ? (k > 0 ? `+${k}` : k) : ""
+            }`;
+            currentAsymptote = null;
+            currentDomainStart = null;
+            currentHorizontalAsymptote = null;
+
+            break;
+          }
+
+          case "root": {
+            const h = randomInt(-3, 3);
+            const k = randomInt(-3, 3);
+            const a = randomChoice(niceScales);
+
+            func = (x) => (x >= h ? a * Math.sqrt(x - h) + k : null);
+            latex = `${formatCoefficient(a)}\\sqrt{${formatShift("x", h)}}${formatConstant(k)}`;
+
+            currentDomainStart = h;
+            currentAsymptote = null;
+            currentHorizontalAsymptote = null;
+            break;
+          }
+
+          case "piecewise": {
+            const split = randomInt(-2, 2);
+
+            const leftFunc = (x) => -x - 1;
+            const rightFunc = (x) => x * x - 1;
+
+            currentLeftFunc = leftFunc;
+            currentRightFunc = rightFunc;
+            currentSplit = split;
+
+            currentLeftClosed = false;
+            currentRightClosed = true;
+
+            func = (x) => {
+              if (x < split) return leftFunc(x);
+              if (x >= split) return rightFunc(x);
+              return null;
+            };
+
+            latex = `
+    \\begin{cases}
+    -x - 1 & x < ${split} \\\\
+    x^2 - 1 & x \\ge ${split}
+    \\end{cases}
+    `;
+
+            currentAsymptote = null;
+            currentDomainStart = null;
+            currentHorizontalAsymptote = null;
+
+            break;
+          }
+        }
+
+        currentFunction = func;
+        currentLatex = latex;
+
+        drawAxes();
+
+        if (currentLeftFunc !== null) {
+          drawFunction(currentLeftFunc, "#2563eb", (x) => x < currentSplit);
+          drawFunction(currentRightFunc, "#2563eb", (x) => x >= currentSplit);
+
+          drawPiecewisePoints("#2563eb");
+        } else if (currentAsymptote !== null) {
+          drawFunction(func, "#2563eb", (x) => x > currentAsymptote);
+          drawAsymptote(currentAsymptote, "#2563eb");
+        } else if (currentDomainStart !== null) {
+          drawFunction(func, "#2563eb", (x) => x >= currentDomainStart);
+        } else {
+          drawFunction(func, "#2563eb");
+        }
+
+        if (currentHorizontalAsymptote !== null) {
+          drawHorizontalAsymptote(currentHorizontalAsymptote, "#2563eb");
+        }
+
+        drawTransformed();
+        showLatex();
+      }
+
+      function drawFunction(f, colour, domainCheck = null) {
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        let first = true;
+
+        for (let px = 0; px <= canvas.width; px++) {
+          const x = xMin + (px / canvas.width) * (xMax - xMin);
+
+          if (domainCheck && !domainCheck(x)) {
+            first = true;
+            continue;
+          }
+
+          const y = f(x);
+
+          if (y === null || !isFinite(y) || y < yMin || y > yMax) {
+            first = true;
+            continue;
+          }
+
+          const py = scaleY(y);
+
+          if (first) {
+            ctx.moveTo(px, py);
+            first = false;
+          } else {
+            ctx.lineTo(px, py);
+          }
+        }
+
+        ctx.stroke();
+      }
+
+      function drawTransformed() {
+        const a = parseFraction(currentA);
+        const b = parseFraction(currentB);
+        const c = Number(currentC);
+        const d = Number(currentD);
+
+        if (currentLeftFunc !== null) {
+          const transformedSplit = (currentSplit - c) / b;
+
+          const leftTransformed = (x) => a * currentLeftFunc(b * x + c) + d;
+          const rightTransformed = (x) => a * currentRightFunc(b * x + c) + d;
+
+          if (b > 0) {
+            drawFunction(leftTransformed, "red", (x) => x < transformedSplit);
+            drawFunction(rightTransformed, "red", (x) => x >= transformedSplit);
+          } else {
+            drawFunction(leftTransformed, "red", (x) => x > transformedSplit);
+            drawFunction(rightTransformed, "red", (x) => x <= transformedSplit);
+          }
+
+          drawTransformedPiecewisePoints(transformedSplit, a, b, c, d);
+
+          return;
+        }
+
+        const g = (x) => a * currentFunction(b * x + c) + d;
+
+        let domainCheck = null;
+
+        if (currentAsymptote !== null) {
+          const boundary = (currentAsymptote - c) / b;
+
+          if (b > 0) {
+            domainCheck = (x) => x > boundary;
+          } else {
+            domainCheck = (x) => x < boundary;
+          }
+        }
+
+        if (currentDomainStart !== null) {
+          const boundary = (currentDomainStart - c) / b;
+
+          if (b > 0) {
+            domainCheck = (x) => x >= boundary;
+          } else {
+            domainCheck = (x) => x <= boundary;
+          }
+        }
+
+        drawFunction(g, "red", domainCheck);
+
+        if (currentAsymptote !== null && b !== 0) {
+          const transformedAsymptote = (currentAsymptote - c) / b;
+          drawAsymptote(transformedAsymptote, "red");
+        }
+
+        if (currentHorizontalAsymptote !== null) {
+          const transformedY = a * currentHorizontalAsymptote + d;
+          drawHorizontalAsymptote(transformedY, "red");
+        }
+      }
+
+      function showLatex() {
+        const latex = `
+f(x)=${currentLatex}
+`;
+
+        display(latex);
+      }
+
+      drawAxes();
+
+      function createNumberBanks() {
+        const dilBank = document.getElementById("dilationBank");
+        const transBank = document.getElementById("translationBank");
+
+        dilBank.innerHTML = "";
+        transBank.innerHTML = "";
+
+        abOptions.forEach((val) => {
+          const tile = document.createElement("div");
+          tile.className = "tile green";
+          tile.textContent = val;
+          tile.draggable = true;
+
+          tile.addEventListener("dragstart", (e) => {
+            e.dataTransfer.setData("value", val);
+            e.dataTransfer.setData("type", "green");
+          });
+
+          dilBank.appendChild(tile);
+        });
+
+        cdOptions.forEach((val) => {
+          const tile = document.createElement("div");
+          tile.className = "tile orange";
+          tile.textContent = formatTranslationDisplay(val);
+          tile.draggable = true;
+
+          tile.addEventListener("dragstart", (e) => {
+            e.dataTransfer.setData("value", val);
+            e.dataTransfer.setData("type", "orange");
+          });
+
+          transBank.appendChild(tile);
+        });
+      }
+
+      document.querySelectorAll(".drop").forEach((drop) => {
+        drop.addEventListener("dragover", (e) => e.preventDefault());
+
+        drop.addEventListener("drop", (e) => {
+          e.preventDefault();
+
+          const value = e.dataTransfer.getData("value");
+          const type = e.dataTransfer.getData("type");
+
+          const slotType = drop.classList.contains("green")
+            ? "green"
+            : "orange";
+
+          if (type === slotType) {
+            drop.textContent =
+              slotType === "orange" ? formatTranslationDisplay(value) : value;
+          }
+        });
+      });
+
+      function checkAnswer() {
+        const slots = {
+          a: document.querySelector('[data-slot="a"]'),
+          b: document.querySelector('[data-slot="b"]'),
+          c: document.querySelector('[data-slot="c"]'),
+          d: document.querySelector('[data-slot="d"]'),
+        };
+
+        const answers = {
+          a: currentA,
+          b: currentB,
+          c: currentC,
+          d: currentD,
+        };
+
+        let allCorrect = true;
+
+        Object.keys(slots).forEach((key) => {
+          const slot = slots[key];
+          let userValue = slot.textContent.trim();
+
+          if (key === "c" || key === "d") {
+            userValue = userValue.replace("+", "");
+          }
+
+          slot.classList.remove("correct", "incorrect");
+
+          if (userValue === answers[key]) {
+            slot.classList.add("correct");
+          } else {
+            slot.classList.add("incorrect");
+            allCorrect = false;
+          }
+        });
+
+        const feedback = document.getElementById("feedback");
+
+        if (allCorrect) {
+          feedback.textContent = "Correct!";
+          feedback.style.color = "green";
+        } else {
+          feedback.textContent = "Not quite — try again.";
+          feedback.style.color = "red";
+        }
+      }
+
+      createNumberBanks();
+
+      function updateView() {
+        xMin = Number(document.getElementById("xMinInput").value);
+        xMax = Number(document.getElementById("xMaxInput").value);
+        yMin = Number(document.getElementById("yMinInput").value);
+        yMax = Number(document.getElementById("yMaxInput").value);
+
+        if (xMin >= xMax || yMin >= yMax) {
+          alert("Minimum must be less than maximum.");
+          return;
+        }
+
+        drawAxes();
+
+        if (currentLeftFunc !== null) {
+          drawFunction(currentLeftFunc, "#2563eb", (x) => x < currentSplit);
+          drawFunction(currentRightFunc, "#2563eb", (x) => x >= currentSplit);
+
+          drawPiecewisePoints("#2563eb");
+        } else if (currentAsymptote !== null) {
+          drawFunction(currentFunction, "#2563eb", (x) => x > currentAsymptote);
+          drawAsymptote(currentAsymptote, "#2563eb");
+        } else if (currentDomainStart !== null) {
+          drawFunction(
+            currentFunction,
+            "#2563eb",
+            (x) => x >= currentDomainStart,
+          );
+        } else {
+          drawFunction(currentFunction, "#2563eb");
+        }
+
+        if (currentHorizontalAsymptote !== null) {
+          drawHorizontalAsymptote(currentHorizontalAsymptote, "#2563eb");
+        }
+
+        drawTransformed();
+      }
+
+      function drawAsymptote(xValue, colour) {
+        if (xValue === null) return;
+        if (xValue < xMin || xValue > xMax) return;
+
+        ctx.strokeStyle = colour;
+        ctx.setLineDash([6, 6]);
+        ctx.lineWidth = 1.5;
+
+        ctx.beginPath();
+        ctx.moveTo(scaleX(xValue), 0);
+        ctx.lineTo(scaleX(xValue), canvas.height);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+      }
+
+      function drawHorizontalAsymptote(yValue, colour) {
+        if (yValue === null) return;
+        if (yValue < yMin || yValue > yMax) return;
+
+        ctx.strokeStyle = colour;
+        ctx.setLineDash([6, 6]);
+        ctx.lineWidth = 1.5;
+
+        ctx.beginPath();
+        ctx.moveTo(0, scaleY(yValue));
+        ctx.lineTo(canvas.width, scaleY(yValue));
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+      }
+
+      function drawPoint(x, y, filled, colour) {
+        if (y === null || !isFinite(y)) return;
+        if (x < xMin || x > xMax) return;
+        if (y < yMin || y > yMax) return;
+
+        ctx.beginPath();
+        ctx.arc(scaleX(x), scaleY(y), 5, 0, 2 * Math.PI);
+
+        ctx.strokeStyle = colour;
+        ctx.fillStyle = colour;
+        ctx.lineWidth = 2;
+
+        if (filled) {
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "white";
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+
+      function drawPiecewisePoints(colour) {
+        if (currentLeftFunc === null) return;
+
+        const leftY = currentLeftFunc(currentSplit);
+        const rightY = currentRightFunc(currentSplit);
+
+        drawPoint(currentSplit, leftY, currentLeftClosed, colour);
+        drawPoint(currentSplit, rightY, currentRightClosed, colour);
+      }
+
+      function drawTransformedPiecewisePoints(split, a, b, c, d) {
+        const leftY = a * currentLeftFunc(currentSplit) + d;
+        const rightY = a * currentRightFunc(currentSplit) + d;
+
+        if (b > 0) {
+          drawPoint(split, leftY, false, "red");
+          drawPoint(split, rightY, true, "red");
+        } else {
+          drawPoint(split, leftY, false, "red");
+          drawPoint(split, rightY, true, "red");
+        }
+      }
+
+      function clearAnswerBoxes() {
+        document.querySelectorAll(".drop").forEach((drop) => {
+          drop.textContent = "";
+          drop.classList.remove("correct", "incorrect");
+        });
+
+        document.getElementById("feedback").textContent = "";
+      }
+
+      function formatShift(variable, value) {
+        if (value === 0) return variable;
+
+        if (value > 0) {
+          return `${variable}-${value}`;
+        } else {
+          return `${variable}+${Math.abs(value)}`;
+        }
+      }
+
+      function formatCoefficient(a) {
+        if (a === 1) return "";
+        if (a === -1) return "-";
+        return a;
+      }
+
+      function formatConstant(k) {
+        if (k === 0) return "";
+        if (k > 0) return `+${k}`;
+        return `${k}`;
+      }
+
+      function formatTranslationDisplay(value) {
+        if (value === "0") return "+0";
+        if (!value.startsWith("-")) return `+${value}`;
+        return value;
+      }
+    </script>
+  </body>
+</html>
