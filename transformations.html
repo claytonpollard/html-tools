@@ -241,13 +241,15 @@
           </p>
 
           <div style="font-size: 22px; margin-bottom: 15px">
-            $g(x) = $
-            <span class="drop green" data-slot="a"></span>
-            $f($
-            <span class="drop green" data-slot="b"></span>$x$
-            <span class="drop orange" data-slot="c"></span>
-            $)$
-            <span class="drop orange" data-slot="d"></span>
+$g(x) = $
+<span class="drop green" data-slot="a"></span>
+$f($
+<span class="drop green" data-slot="b"></span>
+$(x$
+<span class="drop orange" data-slot="c"></span>
+$))$
+<span class="drop orange" data-slot="d"></span>
+
           </div>
 
           <div class="rowTitle">Dilations</div>
@@ -715,7 +717,7 @@
         const d = Number(currentD);
 
         if (currentLeftFunc !== null) {
-          const transformedSplit = (currentSplit - c) / b;
+          const transformedSplit = currentSplit / b - c;
 
           const leftTransformed = (x) => a * currentLeftFunc(b * x + c) + d;
           const rightTransformed = (x) => a * currentRightFunc(b * x + c) + d;
@@ -733,12 +735,12 @@
           return;
         }
 
-        const g = (x) => a * currentFunction(b * x + c) + d;
+        const g = (x) => a * currentFunction(b * (x + c)) + d;
 
         let domainCheck = null;
 
         if (currentAsymptote !== null) {
-          const boundary = (currentAsymptote - c) / b;
+          const boundary = currentAsymptote / b - c;
 
           if (b > 0) {
             domainCheck = (x) => x > boundary;
@@ -748,7 +750,7 @@
         }
 
         if (currentDomainStart !== null) {
-          const boundary = (currentDomainStart - c) / b;
+          const boundary = currentDomainStart / b - c;
 
           if (b > 0) {
             domainCheck = (x) => x >= boundary;
@@ -760,7 +762,7 @@
         drawFunction(g, "red", domainCheck);
 
         if (currentAsymptote !== null && b !== 0) {
-          const transformedAsymptote = (currentAsymptote - c) / b;
+          const transformedAsymptote = currentAsymptote / b - c;
           drawAsymptote(transformedAsymptote, "red");
         }
 
