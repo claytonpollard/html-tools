@@ -208,9 +208,9 @@ D,1,C</pre>
       <canvas id="network-canvas"></canvas>
       <div id="options-panel" class="options-panel"></div>
       <div class="toolbar">
-      <label>Node size <input type="range" id="node-size" min="16" max="60" value="42"></label>
+      <label>Node size <input type="range" id="node-size" min="16" max="100" value="50"><input type="number" id="node-size-num" min="16" max="100" value="50" style="width:40px;font-size:0.75rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;text-align:center;"></label>
       <div class="separator"></div>
-      <label>Font <input type="range" id="font-size" min="8" max="24" value="13"></label>
+      <label>Font <input type="range" id="font-size" min="8" max="24" value="13"><input type="number" id="font-size-num" min="8" max="24" value="13" style="width:40px;font-size:0.75rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;text-align:center;"></label>
       <div class="separator"></div>
       <label><input type="checkbox" id="show-weighting" checked> Weighting</label>
       <div class="separator"></div>
@@ -218,9 +218,10 @@ D,1,C</pre>
       <div class="separator"></div>
       <label>Shape <select id="node-shape" style="font-size:0.8rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;">
         <option value="circle">Circle</option>
-        <option value="filled">Filled Circle</option>
         <option value="split" selected>Split Ellipse</option>
       </select></label>
+      <div class="separator"></div>
+      <label><input type="checkbox" id="auto-curves" checked> Auto Curves</label>
       <div class="separator"></div>
       <button class="btn btn-secondary" onclick="autoLayout()">Auto Layout</button>
       </div>
@@ -245,10 +246,12 @@ let panStartX = 0, panStartY = 0;
 let hoveredEvent = null;
 let hoveredArrow = null;
 let hoveredLabel = null;
+let hoveredEndpoint = null; // { arrow, end: 'start'|'end' }
 let selectedEvent = null;
 let selectedArrow = null;
 let draggingLabel = null;
 let draggingLabelType = null;
+let draggingEndpoint = null; // { arrow, end: 'start'|'end' }
 let didDrag = false;
 let snapLines = [];
 
@@ -267,7 +270,8 @@ function getFontSize() { return +document.getElementById('font-size').value; }
 function getShowWeighting() { return document.getElementById('show-weighting').checked; }
 function getShowNumbers() { return document.getElementById('show-numbers').checked; }
 function getNodeShape() { return document.getElementById('node-shape').value; }
-function getNodeHalfW(nodeR) { const s = getNodeShape(); return s === 'split' ? nodeR * 1.5 : s === 'filled' ? 2 : nodeR; }
+function getAutoCurves() { return document.getElementById('auto-curves').checked; }
+function getNodeHalfW(nodeR) { const s = getNodeShape(); return s === 'split' ? nodeR * 1.5 : nodeR; }
 
 // ---- FILE PARSING ----
 
@@ -367,7 +371,8 @@ function generateGraph(activities, preserveCustoms) {
         customs[a.label] = {
           curve: a.curve, color: a.color, lineWidth: a.lineWidth,
           dash: [...a.dash], labelDx: a.labelDx, labelDy: a.labelDy,
-          durDx: a.durDx, durDy: a.durDy
+          durDx: a.durDx, durDy: a.durDy,
+          startAngle: a.startAngle, endAngle: a.endAngle
         };
       }
     });
@@ -548,13 +553,15 @@ function buildAOA(activities) {
     arrows.push({
       from: actStart[a.id], to: actEnd[a.id], label: a.id, weighting: a.weighting,
       isDummy: false, curve: 0, color: '#1e293b', lineWidth: 2, dash: [],
-      labelDx: 0, labelDy: 0, durDx: 0, durDy: 0
+      labelDx: 0, labelDy: 0, durDx: 0, durDy: 0,
+      startAngle: null, endAngle: null
     });
   });
   dummies.forEach(d => {
     arrows.push({
       from: d.from, to: d.to, label: '', weighting: 0,
-      isDummy: true, curve: 0, color: '#1e293b', lineWidth: 2, dash: [6, 4]
+      isDummy: true, curve: 0, color: '#1e293b', lineWidth: 2, dash: [6, 4],
+      startAngle: null, endAngle: null
     });
   });
 
@@ -683,6 +690,16 @@ function autoLayout() {
 
 // ---- EDGE GEOMETRY ----
 
+function getPerimeterPoint(ev, angle, nodeR) {
+  const shape = getNodeShape();
+  if (shape === 'split') {
+    const hw = nodeR * 1.5, hh = nodeR;
+    return { x: ev.x + hw * Math.cos(angle), y: ev.y + hh * Math.sin(angle) };
+  } else {
+    return { x: ev.x + nodeR * Math.cos(angle), y: ev.y + nodeR * Math.sin(angle) };
+  }
+}
+
 function getEdgeGeom(a, evMap, nodeR) {
   const fe = evMap[a.from], te = evMap[a.to];
   if (!fe || !te) return null;
@@ -709,55 +726,95 @@ function getEdgeGeom(a, evMap, nodeR) {
   const ux = dx/dist, uy = dy/dist;
   const perpX = -uy, perpY = ux;
 
+  // Auto-curve for parallel edges between same node pair
+  const parallel = arrows.filter(e =>
+    (e.from === a.from && e.to === a.to) || (e.from === a.to && e.to === a.from)
+  );
+  let autoCurveOffset = 0;
+  if (parallel.length > 1) {
+    const pIdx = parallel.indexOf(a);
+    const spacing = 60;
+    autoCurveOffset = (pIdx - (parallel.length-1)/2) * spacing;
+    // Flip sign for reversed edges so they spread the other way
+    if (a.from > a.to) autoCurveOffset = -autoCurveOffset;
+  }
+
   // Control point based on node center midpoint
   const midCX = (fe.x + te.x)/2, midCY = (fe.y + te.y)/2;
-  const cpx = midCX + perpX * a.curve, cpy = midCY + perpY * a.curve;
+  const cpx = midCX + perpX * (a.curve + autoCurveOffset), cpy = midCY + perpY * (a.curve + autoCurveOffset);
 
   const aLen = 8 + a.lineWidth * 2;
   const aHeight = aLen * Math.cos(Math.PI/6);
 
   let sx, sy, ex, ey;
-  if (a.curve !== 0) {
-    // Curved: connect toward center (tangent from control point)
-    const tdx0 = cpx - fe.x, tdy0 = cpy - fe.y;
-    const td0 = Math.sqrt(tdx0*tdx0 + tdy0*tdy0);
-    if (td0 === 0) return null;
-    sx = fe.x + (tdx0/td0) * (halfW + 2);
-    sy = fe.y + (tdy0/td0) * (halfW + 2);
 
-    const tdx1 = te.x - cpx, tdy1 = te.y - cpy;
-    const td1 = Math.sqrt(tdx1*tdx1 + tdy1*tdy1);
-    if (td1 === 0) return null;
-    ex = te.x - (tdx1/td1) * (halfW + aHeight);
-    ey = te.y - (tdy1/td1) * (halfW + aHeight);
+  // Compute default angles from node-to-node direction
+  const baseAngleOut = Math.atan2(te.y - fe.y, te.x - fe.x);
+  const baseAngleIn = Math.atan2(fe.y - te.y, fe.x - te.x);
+
+  // Angular fan offset for multiple edges sharing a node
+  const fanSpread = 0.3;
+  const outAngOffset = outEdges.length > 1
+    ? (outIdx - (outEdges.length-1)/2) * (fanSpread / Math.max(outEdges.length-1, 1)) : 0;
+  const inAngOffset = inEdges.length > 1
+    ? (inIdx - (inEdges.length-1)/2) * (fanSpread / Math.max(inEdges.length-1, 1)) : 0;
+
+  const isCurved = a.curve !== 0 || autoCurveOffset !== 0;
+
+  if (a.startAngle != null) {
+    const sp = getPerimeterPoint(fe, a.startAngle, nodeR);
+    sx = sp.x; sy = sp.y;
+  } else if (isCurved) {
+    const sAng = Math.atan2(cpy - fe.y, cpx - fe.x);
+    const sp = getPerimeterPoint(fe, sAng, nodeR);
+    sx = sp.x; sy = sp.y;
   } else {
-    // Straight: right side of source, left side of target
-    sx = fe.x + halfW;
-    sy = fe.y + outOffset;
-    const tipX = te.x - halfW, tipY = te.y + inOffset;
-    const edx = tipX - sx, edy = tipY - sy;
-    const ed = Math.sqrt(edx*edx + edy*edy);
-    if (ed === 0) return null;
-    ex = tipX - (edx/ed) * aHeight;
-    ey = tipY - (edy/ed) * aHeight;
+    const sAng = baseAngleOut + outAngOffset;
+    const sp = getPerimeterPoint(fe, sAng, nodeR);
+    sx = sp.x; sy = sp.y;
+  }
+
+  if (a.endAngle != null) {
+    const ep = getPerimeterPoint(te, a.endAngle, nodeR);
+    ex = ep.x + Math.cos(a.endAngle) * aHeight;
+    ey = ep.y + Math.sin(a.endAngle) * aHeight;
+  } else if (isCurved) {
+    const eAng = Math.atan2(cpy - te.y, cpx - te.x);
+    const ep = getPerimeterPoint(te, eAng, nodeR);
+    ex = ep.x + Math.cos(eAng) * aHeight;
+    ey = ep.y + Math.sin(eAng) * aHeight;
+  } else {
+    const eAng = baseAngleIn + inAngOffset;
+    const ep = getPerimeterPoint(te, eAng, nodeR);
+    ex = ep.x + Math.cos(eAng) * aHeight;
+    ey = ep.y + Math.sin(eAng) * aHeight;
   }
 
   const mx = (sx+ex)/2, my = (sy+ey)/2;
-  return { sx, sy, ex, ey, mx, my, cpx, cpy, ux, uy, perpX, perpY, dist, aLen };
+  return { sx, sy, ex, ey, mx, my, cpx, cpy, ux, uy, perpX, perpY, dist, aLen, isCurved };
 }
 
 function getLabelBasePos(a, evMap, nodeR) {
   const g = getEdgeGeom(a, evMap, nodeR);
   if (!g) return null;
-  let mx, my;
-  if (a.curve !== 0) {
+  let mx, my, tx, ty;
+  const cps = getAutoCurveCPs(a, g);
+  if (cps) {
+    // Cubic bezier at t=0.5
+    const t = 0.5, t1 = 1-t;
+    mx = t1*t1*t1*g.sx + 3*t1*t1*t*cps.cp1x + 3*t1*t*t*cps.cp2x + t*t*t*g.ex;
+    my = t1*t1*t1*g.sy + 3*t1*t1*t*cps.cp1y + 3*t1*t*t*cps.cp2y + t*t*t*g.ey;
+    // Tangent of cubic at t=0.5
+    tx = 3*t1*t1*(cps.cp1x-g.sx) + 6*t1*t*(cps.cp2x-cps.cp1x) + 3*t*t*(g.ex-cps.cp2x);
+    ty = 3*t1*t1*(cps.cp1y-g.sy) + 6*t1*t*(cps.cp2y-cps.cp1y) + 3*t*t*(g.ey-cps.cp2y);
+  } else if (g.isCurved) {
     mx = 0.25*g.sx + 0.5*g.cpx + 0.25*g.ex;
     my = 0.25*g.sy + 0.5*g.cpy + 0.25*g.ey;
+    tx = g.ex - g.sx; ty = g.ey - g.sy;
   } else {
     mx = g.mx; my = g.my;
+    tx = g.ex - g.sx; ty = g.ey - g.sy;
   }
-  // Tangent at midpoint (for quadratic Bezier: P2-P0)
-  const tx = g.ex - g.sx, ty = g.ey - g.sy;
   const tLen = Math.sqrt(tx*tx + ty*ty);
   if (tLen === 0) return null;
   let upX = -ty/tLen, upY = tx/tLen;
@@ -836,25 +893,6 @@ function drawNetwork(c, ox, oy, exporting) {
     c.stroke();
     c.setLineDash([]);
 
-    // Arrowhead — sits between line end and node edge, scales with lineWidth
-    let ang;
-    if (a.curve !== 0) {
-      ang = Math.atan2(g.ey - g.cpy, g.ex - g.cpx);
-    } else {
-      ang = Math.atan2(g.ey - g.sy, g.ex - g.sx);
-    }
-    const aLen = g.aLen, aAng = Math.PI/6;
-    const aHeight = aLen * Math.cos(aAng);
-    const tipX = g.ex + Math.cos(ang) * aHeight;
-    const tipY = g.ey + Math.sin(ang) * aHeight;
-    c.beginPath();
-    c.moveTo(tipX, tipY);
-    c.lineTo(tipX - aLen*Math.cos(ang-aAng), tipY - aLen*Math.sin(ang-aAng));
-    c.lineTo(tipX - aLen*Math.cos(ang+aAng), tipY - aLen*Math.sin(ang+aAng));
-    c.closePath();
-    c.fillStyle = a.color;
-    c.fill();
-
     // Labels: task name above edge, duration below
     if (!a.isDummy) {
       const basePos = getLabelBasePos(a, evMap, nodeR);
@@ -894,12 +932,7 @@ function drawNetwork(c, ox, oy, exporting) {
     const bump = (isH || isSel) ? 3 : 0;
     const strokeColor = isSel ? '#3b82f6' : (isH ? '#3b82f6' : e.borderColor);
 
-    if (shape === 'filled') {
-      const r = nodeR * 0.35 + bump;
-      c.beginPath(); c.arc(e.x, e.y, r, 0, Math.PI*2);
-      c.fillStyle = e.borderColor; c.fill();
-      if (isSel || isH) { c.strokeStyle = '#3b82f6'; c.lineWidth = 2.5; c.stroke(); }
-    } else if (shape === 'split') {
+    if (shape === 'split') {
       const hw = nodeR * 1.5 + bump, hh = nodeR + bump;
       c.beginPath();
       c.ellipse(e.x, e.y, hw, hh, 0, 0, Math.PI*2);
@@ -933,13 +966,103 @@ function drawNetwork(c, ox, oy, exporting) {
     }
   });
 
+  // Arrowheads (drawn after nodes so they aren't covered by node fill)
+  arrows.forEach(a => {
+    const g = getEdgeGeom(a, evMap, nodeR);
+    if (!g) return;
+    const fe = evMap[a.from], te = evMap[a.to];
+    if (!te) return;
+    const aLen = g.aLen, aAng = Math.PI/6;
+    const aHeight = aLen * Math.cos(aAng);
+
+    // Determine the inward angle at the target (direction arrowhead points)
+    let inAngle;
+    if (a.endAngle != null) {
+      inAngle = a.endAngle;
+    } else if (g.isCurved) {
+      inAngle = Math.atan2(g.cpy - te.y, g.cpx - te.x);
+    } else {
+      const inEdges = arrows.filter(e => e.to === a.to);
+      inEdges.sort((x, y) => (evMap[x.from]?.y || 0) - (evMap[y.from]?.y || 0));
+      const inIdx = inEdges.indexOf(a);
+      const inAngOffset = inEdges.length > 1
+        ? (inIdx - (inEdges.length-1)/2) * (0.3 / Math.max(inEdges.length-1, 1)) : 0;
+      inAngle = Math.atan2(fe.y - te.y, fe.x - te.x) + inAngOffset;
+    }
+
+    const ep = getPerimeterPoint(te, inAngle, nodeR);
+    const tipX = ep.x, tipY = ep.y;
+    c.beginPath();
+    c.moveTo(tipX, tipY);
+    c.lineTo(tipX + aLen*Math.cos(inAngle - aAng), tipY + aLen*Math.sin(inAngle - aAng));
+    c.lineTo(tipX + aLen*Math.cos(inAngle + aAng), tipY + aLen*Math.sin(inAngle + aAng));
+    c.closePath();
+    c.fillStyle = a.color;
+    c.fill();
+  });
+
+  // Endpoint handles (only in interactive mode)
+  if (!exporting && hoveredEndpoint) {
+    const a = hoveredEndpoint.arrow;
+    const g = getEdgeGeom(a, evMap, nodeR);
+    if (g) {
+      const aHeight = g.aLen * Math.cos(Math.PI/6);
+      let hx, hy;
+      if (hoveredEndpoint.end === 'start') {
+        hx = g.sx; hy = g.sy;
+      } else {
+        if (a.endAngle != null) {
+          const te = evMap[a.to];
+          const ep = getPerimeterPoint(te, a.endAngle, nodeR);
+          hx = ep.x; hy = ep.y;
+        } else if (a.curve !== 0) {
+          const ang2 = Math.atan2(g.ey - g.cpy, g.ex - g.cpx);
+          hx = g.ex + Math.cos(ang2) * aHeight;
+          hy = g.ey + Math.sin(ang2) * aHeight;
+        } else {
+          const ang2 = Math.atan2(g.ey - g.sy, g.ex - g.sx);
+          hx = g.ex + Math.cos(ang2) * aHeight;
+          hy = g.ey + Math.sin(ang2) * aHeight;
+        }
+      }
+      c.beginPath();
+      c.arc(hx, hy, 6, 0, Math.PI*2);
+      c.fillStyle = 'rgba(59, 130, 246, 0.3)';
+      c.fill();
+      c.strokeStyle = '#3b82f6';
+      c.lineWidth = 2;
+      c.stroke();
+    }
+  }
+
   c.restore();
+}
+
+function getAutoCurveCPs(a, g) {
+  if (!getAutoCurves()) return null;
+  if (a.startAngle == null && a.endAngle == null) return null;
+  const dx = g.ex - g.sx, dy = g.ey - g.sy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const factor = dist * 0.4;
+  const startAng = a.startAngle != null ? a.startAngle : Math.atan2(dy, dx);
+  const endAng = a.endAngle != null ? a.endAngle : Math.atan2(-dy, -dx);
+  const cp1x = g.sx + Math.cos(startAng) * factor;
+  const cp1y = g.sy + Math.sin(startAng) * factor;
+  const cp2x = g.ex + Math.cos(endAng) * factor;
+  const cp2y = g.ey + Math.sin(endAng) * factor;
+  return { cp1x, cp1y, cp2x, cp2y };
 }
 
 function drawEdgePath(c, g, a) {
   c.moveTo(g.sx, g.sy);
-  if (a.curve !== 0) c.quadraticCurveTo(g.cpx, g.cpy, g.ex, g.ey);
-  else c.lineTo(g.ex, g.ey);
+  const cps = getAutoCurveCPs(a, g);
+  if (cps) {
+    c.bezierCurveTo(cps.cp1x, cps.cp1y, cps.cp2x, cps.cp2y, g.ex, g.ey);
+  } else if (g.isCurved) {
+    c.quadraticCurveTo(g.cpx, g.cpy, g.ex, g.ey);
+  } else {
+    c.lineTo(g.ex, g.ey);
+  }
 }
 
 function draw() {
@@ -1005,7 +1128,15 @@ function edgeHitTest(mx, my) {
     const a = arrows[i];
     const g = getEdgeGeom(a, evMap, nodeR);
     if (!g) continue;
-    if (a.curve !== 0) {
+    const cps = getAutoCurveCPs(a, g);
+    if (cps) {
+      for (let t = 0; t <= 1; t += 0.03) {
+        const t1 = 1-t;
+        const bx = t1*t1*t1*g.sx + 3*t1*t1*t*cps.cp1x + 3*t1*t*t*cps.cp2x + t*t*t*g.ex;
+        const by = t1*t1*t1*g.sy + 3*t1*t1*t*cps.cp1y + 3*t1*t*t*cps.cp2y + t*t*t*g.ey;
+        if (Math.sqrt((mx-bx)**2 + (my-by)**2) < threshold) return a;
+      }
+    } else if (g.isCurved) {
       for (let t = 0; t <= 1; t += 0.04) {
         const bx = (1-t)*(1-t)*g.sx + 2*(1-t)*t*g.cpx + t*t*g.ex;
         const by = (1-t)*(1-t)*g.sy + 2*(1-t)*t*g.cpy + t*t*g.ey;
@@ -1018,11 +1149,48 @@ function edgeHitTest(mx, my) {
   return null;
 }
 
+function endpointHitTest(mx, my) {
+  const evMap = {};
+  events.forEach(e => evMap[e.id] = e);
+  const nodeR = getNodeSize()/2;
+  const threshold = 10;
+  for (let i = arrows.length-1; i >= 0; i--) {
+    const a = arrows[i];
+    const g = getEdgeGeom(a, evMap, nodeR);
+    if (!g) continue;
+    // Check start point
+    if (Math.sqrt((mx-g.sx)**2 + (my-g.sy)**2) < threshold) return { arrow: a, end: 'start' };
+    // Check end point (perimeter where arrowhead tip is)
+    let tipX, tipY;
+    if (a.endAngle != null) {
+      const te = evMap[a.to];
+      const ep = getPerimeterPoint(te, a.endAngle, nodeR);
+      tipX = ep.x; tipY = ep.y;
+    } else {
+      const aHeight = g.aLen * Math.cos(Math.PI/6);
+      let ang;
+      if (a.curve !== 0) ang = Math.atan2(g.ey - g.cpy, g.ex - g.cpx);
+      else ang = Math.atan2(g.ey - g.sy, g.ex - g.sx);
+      tipX = g.ex + Math.cos(ang) * aHeight;
+      tipY = g.ey + Math.sin(ang) * aHeight;
+    }
+    if (Math.sqrt((mx-tipX)**2 + (my-tipY)**2) < threshold) return { arrow: a, end: 'end' };
+  }
+  return null;
+}
+
 canvas.addEventListener('mousedown', e => {
   didDrag = false;
   const pos = getMousePos(e);
 
-  // Priority: label > node > pan
+  // Priority: endpoint > label > node > pan
+  const epHit = endpointHitTest(pos.x, pos.y);
+  if (epHit) {
+    draggingEndpoint = epHit;
+    canvas.style.cursor = 'crosshair';
+    return;
+  }
+
   const lblHit = labelHitTest(pos.x, pos.y);
   if (lblHit) {
     draggingLabel = lblHit.arrow;
@@ -1061,7 +1229,20 @@ canvas.addEventListener('mousedown', e => {
 
 canvas.addEventListener('mousemove', e => {
   const pos = getMousePos(e);
-  if (draggingLabel) {
+  if (draggingEndpoint) {
+    didDrag = true;
+    const evMap = {}; events.forEach(ev => evMap[ev.id] = ev);
+    const a = draggingEndpoint.arrow;
+    if (draggingEndpoint.end === 'start') {
+      const fe = evMap[a.from];
+      a.startAngle = Math.atan2(pos.y - fe.y, pos.x - fe.x);
+    } else {
+      const te = evMap[a.to];
+      a.endAngle = Math.atan2(pos.y - te.y, pos.x - te.x);
+    }
+    canvas.style.cursor = 'crosshair';
+    draw();
+  } else if (draggingLabel) {
     didDrag = true;
     const evMap = {}; events.forEach(ev => evMap[ev.id] = ev);
     const base = getLabelBasePos(draggingLabel, evMap, getNodeSize()/2);
@@ -1095,15 +1276,18 @@ canvas.addEventListener('mousemove', e => {
     panY = e.clientY - panStartY;
     draw();
   } else {
-    const lblHit = labelHitTest(pos.x, pos.y);
+    const epHit = endpointHitTest(pos.x, pos.y);
+    const lblHit = !epHit ? labelHitTest(pos.x, pos.y) : null;
     const lbl = lblHit ? lblHit.arrow : null;
-    const node = lbl ? null : hitTest(pos.x, pos.y);
-    const edge = (lbl || node) ? null : edgeHitTest(pos.x, pos.y);
-    if (lbl !== hoveredLabel || node !== hoveredEvent || edge !== hoveredArrow) {
+    const node = (epHit || lbl) ? null : hitTest(pos.x, pos.y);
+    const edge = (epHit || lbl || node) ? null : edgeHitTest(pos.x, pos.y);
+    const newHoveredEp = epHit || null;
+    if (newHoveredEp !== hoveredEndpoint || lbl !== hoveredLabel || node !== hoveredEvent || edge !== hoveredArrow) {
+      hoveredEndpoint = newHoveredEp;
       hoveredLabel = lbl;
       hoveredEvent = node;
       hoveredArrow = edge;
-      canvas.style.cursor = lbl ? 'move' : (node || edge) ? 'pointer' : 'grab';
+      canvas.style.cursor = epHit ? 'crosshair' : lbl ? 'move' : (node || edge) ? 'pointer' : 'grab';
       draw();
     }
   }
@@ -1136,15 +1320,15 @@ canvas.addEventListener('mouseup', e => {
     }
     draw();
   }
-  dragging = null; isPanning = false; draggingLabel = null; draggingLabelType = null;
+  dragging = null; isPanning = false; draggingLabel = null; draggingLabelType = null; draggingEndpoint = null;
   snapLines = []; draw();
-  canvas.style.cursor = hoveredLabel ? 'move' : (hoveredEvent || hoveredArrow) ? 'pointer' : 'grab';
+  canvas.style.cursor = hoveredEndpoint ? 'crosshair' : hoveredLabel ? 'move' : (hoveredEvent || hoveredArrow) ? 'pointer' : 'grab';
 });
 
 canvas.addEventListener('mouseleave', () => {
-  dragging = null; isPanning = false; draggingLabel = null; draggingLabelType = null;
+  dragging = null; isPanning = false; draggingLabel = null; draggingLabelType = null; draggingEndpoint = null;
   snapLines = [];
-  hoveredEvent = null; hoveredArrow = null; hoveredLabel = null; draw();
+  hoveredEvent = null; hoveredArrow = null; hoveredLabel = null; hoveredEndpoint = null; draw();
 });
 
 document.addEventListener('keydown', e => {
@@ -1176,18 +1360,20 @@ function positionPanel(screenX, screenY) {
 function showEdgePanel(arrow) {
   const panel = document.getElementById('options-panel');
   const dashIdx = arrow.dash.length === 0 ? 0 : (arrow.dash[0] > 4 ? 1 : 2);
+  const hasCustomAnchors = arrow.startAngle != null || arrow.endAngle != null;
   panel.innerHTML = `
     <div class="panel-title">Edge: ${arrow.label || 'Dummy'}</div>
-    <div class="opt-row"><span class="opt-label">Curve</span><input type="range" min="-150" max="150" value="${arrow.curve}" id="opt-curve"><span id="opt-curve-val">${arrow.curve}</span></div>
-    <div class="opt-row"><span class="opt-label">Color</span><input type="color" value="${arrow.color}" id="opt-color"></div>
-    <div class="opt-row"><span class="opt-label">Weight</span><input type="range" min="1" max="6" value="${arrow.lineWidth}" id="opt-weight"><span id="opt-weight-val">${arrow.lineWidth}</span></div>
+    <div class="opt-row"><span class="opt-label">Colour</span><input type="color" value="${arrow.color}" id="opt-color"></div>
+    <div class="opt-row"><span class="opt-label">Curve</span><input type="range" min="-150" max="150" value="${arrow.curve}" id="opt-curve"><input type="number" min="-150" max="150" value="${arrow.curve}" id="opt-curve-num" style="width:48px;font-size:0.75rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;text-align:center;"></div>
+    <div class="opt-row"><span class="opt-label">Weight</span><input type="range" min="1" max="6" value="${arrow.lineWidth}" id="opt-weight"><input type="number" min="1" max="6" value="${arrow.lineWidth}" id="opt-weight-num" style="width:48px;font-size:0.75rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;text-align:center;"></div>
     <div class="opt-row"><span class="opt-label">Style</span>
-      <div class="style-btns">
-        <button class="style-btn${dashIdx===0?' active':''}" data-dash="">Solid</button>
-        <button class="style-btn${dashIdx===1?' active':''}" data-dash="8,4">Dash</button>
-        <button class="style-btn${dashIdx===2?' active':''}" data-dash="2,4">Dot</button>
+      <div class="style-btns" style="flex:1;">
+        <button class="style-btn${dashIdx===0?' active':''}" data-dash="" style="flex:1;">Solid</button>
+        <button class="style-btn${dashIdx===1?' active':''}" data-dash="8,4" style="flex:1;">Dash</button>
+        <button class="style-btn${dashIdx===2?' active':''}" data-dash="2,4" style="flex:1;">Dot</button>
       </div>
-    </div>`;
+    </div>
+    <div class="opt-row"><button class="style-btn" id="opt-reset-anchors" ${hasCustomAnchors?'':'disabled'} style="width:100%">Reset Anchors</button></div>`;
 
   const evMap = {};
   events.forEach(e => evMap[e.id] = e);
@@ -1196,23 +1382,41 @@ function showEdgePanel(arrow) {
 
   document.getElementById('opt-curve').addEventListener('input', e => {
     arrow.curve = +e.target.value;
-    document.getElementById('opt-curve-val').textContent = arrow.curve;
+    document.getElementById('opt-curve-num').value = arrow.curve;
+    draw();
+  });
+  document.getElementById('opt-curve-num').addEventListener('input', e => {
+    const v = Math.max(-150, Math.min(150, +e.target.value || 0));
+    arrow.curve = v;
+    document.getElementById('opt-curve').value = v;
     draw();
   });
   document.getElementById('opt-color').addEventListener('input', e => { arrow.color = e.target.value; draw(); });
   document.getElementById('opt-weight').addEventListener('input', e => {
     arrow.lineWidth = +e.target.value;
-    document.getElementById('opt-weight-val').textContent = arrow.lineWidth;
+    document.getElementById('opt-weight-num').value = arrow.lineWidth;
     draw();
   });
-  panel.querySelectorAll('.style-btn').forEach(btn => {
+  document.getElementById('opt-weight-num').addEventListener('input', e => {
+    const v = Math.max(1, Math.min(6, +e.target.value || 1));
+    arrow.lineWidth = v;
+    document.getElementById('opt-weight').value = v;
+    draw();
+  });
+  panel.querySelectorAll('.style-btn[data-dash]').forEach(btn => {
     btn.addEventListener('click', () => {
       const d = btn.dataset.dash;
       arrow.dash = d ? d.split(',').map(Number) : [];
-      panel.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
+      panel.querySelectorAll('.style-btn[data-dash]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       draw();
     });
+  });
+  document.getElementById('opt-reset-anchors').addEventListener('click', () => {
+    arrow.startAngle = null;
+    arrow.endAngle = null;
+    document.getElementById('opt-reset-anchors').disabled = true;
+    draw();
   });
 }
 
@@ -1231,11 +1435,24 @@ function showNodePanel(ev) {
 
 // ---- CONTROLS ----
 
-document.getElementById('node-size').addEventListener('input', draw);
-document.getElementById('font-size').addEventListener('input', draw);
+document.getElementById('node-size').addEventListener('input', e => {
+  document.getElementById('node-size-num').value = e.target.value; draw();
+});
+document.getElementById('node-size-num').addEventListener('input', e => {
+  const v = Math.max(16, Math.min(100, +e.target.value || 16));
+  document.getElementById('node-size').value = v; draw();
+});
+document.getElementById('font-size').addEventListener('input', e => {
+  document.getElementById('font-size-num').value = e.target.value; draw();
+});
+document.getElementById('font-size-num').addEventListener('input', e => {
+  const v = Math.max(8, Math.min(24, +e.target.value || 8));
+  document.getElementById('font-size').value = v; draw();
+});
 document.getElementById('show-weighting').addEventListener('change', draw);
 document.getElementById('show-numbers').addEventListener('change', draw);
 document.getElementById('node-shape').addEventListener('change', draw);
+document.getElementById('auto-curves').addEventListener('change', draw);
 
 // ---- FILE HANDLING ----
 
