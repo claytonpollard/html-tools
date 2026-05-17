@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Precedence Diagram</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc; color: #1e293b;
+      min-height: 100vh; display: flex; flex-direction: column;
+    }
+
+    header {
+      padding: 20px 32px; background: #ffffff; border-bottom: 1px solid #e2e8f0;
+      display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 600; color: #0f172a; white-space: nowrap; }
+    .header-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+    .btn {
+      padding: 8px 16px; border: none; border-radius: 6px;
+      font-size: 0.875rem; font-weight: 500; cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    .btn-export { background: #10b981; color: white; }
+    .btn-export:hover { background: #059669; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #file-input { display: none; }
+    .main-container { flex: 1; display: flex; flex-direction: column; position: relative; }
+
+    #upload-screen {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 24px; padding: 40px;
+    }
+    .drop-zone {
+      width: 100%; max-width: 560px; border: 2px dashed #cbd5e1;
+      border-radius: 16px; padding: 60px 40px; text-align: center;
+      transition: border-color 0.2s, background 0.2s; cursor: pointer;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #3b82f6; background: rgba(59, 130, 246, 0.05); }
+    .drop-zone h2 { font-size: 1.25rem; margin-bottom: 8px; color: #0f172a; }
+    .drop-zone p { color: #64748b; font-size: 0.9rem; line-height: 1.6; }
+    .format-hint {
+      max-width: 560px; background: #ffffff; border: 1px solid #e2e8f0;
+      border-radius: 12px; padding: 20px 24px; font-size: 0.85rem; color: #64748b; line-height: 1.7;
+    }
+    .format-hint strong { color: #1e293b; }
+    .format-hint code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: #334155; }
+    .format-hint pre { background: #f1f5f9; padding: 12px; border-radius: 6px; margin-top: 10px; overflow-x: auto; font-size: 0.8rem; color: #334155; }
+
+    #graph-screen { display: none; flex: 1; position: relative; flex-direction: row; }
+    #network-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+
+    .toolbar {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 8px 12px; display: flex; gap: 8px; align-items: center;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08); flex-wrap: wrap; max-width: 95%;
+    }
+    .toolbar label { font-size: 0.8rem; color: #64748b; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .toolbar input[type="range"] { width: 80px; accent-color: #3b82f6; }
+    .toolbar .separator { width: 1px; height: 24px; background: #e2e8f0; }
+
+    .options-panel {
+      position: absolute; background: #ffffff; border: 1px solid #e2e8f0;
+      border-radius: 10px; padding: 14px; display: none; z-index: 50;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1); font-size: 0.8rem; color: #64748b;
+      min-width: 200px;
+    }
+    .options-panel .panel-title {
+      font-weight: 600; color: #0f172a; margin-bottom: 10px;
+      padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem;
+    }
+    .options-panel .opt-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+    .options-panel .opt-row:last-child { margin-bottom: 0; }
+    .options-panel .opt-label { min-width: 50px; color: #475569; }
+    .options-panel input[type="range"] { width: 100px; accent-color: #3b82f6; }
+    .options-panel input[type="color"] {
+      width: 32px; height: 24px; border: 1px solid #cbd5e1; border-radius: 4px;
+      cursor: pointer; background: transparent; padding: 0;
+    }
+    .style-btns { display: flex; gap: 4px; }
+    .style-btn {
+      padding: 3px 8px; background: #f1f5f9; border: 1px solid #cbd5e1;
+      border-radius: 4px; color: #334155; cursor: pointer; font-size: 0.75rem;
+    }
+    .style-btn:hover { background: #e2e8f0; }
+    .style-btn.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+
+    .table-panel {
+      width: 320px; flex-shrink: 0; background: #ffffff;
+      border-right: 1px solid #e2e8f0; display: none; flex-direction: column; overflow: hidden;
+    }
+    .table-panel.open { display: flex; }
+    .table-panel-header {
+      padding: 12px 16px; border-bottom: 1px solid #e2e8f0;
+      display: flex; justify-content: space-between; align-items: center;
+      font-weight: 600; font-size: 0.9rem; color: #0f172a;
+    }
+    .table-panel-header button {
+      background: none; border: none; font-size: 1.2rem; cursor: pointer;
+      color: #64748b; padding: 2px 6px; border-radius: 4px;
+    }
+    .table-panel-header button:hover { background: #f1f5f9; }
+    .table-panel-body { flex: 1; overflow-y: auto; padding: 12px; }
+    .table-panel table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .table-panel th {
+      text-align: left; padding: 6px 4px; color: #64748b;
+      font-weight: 500; border-bottom: 1px solid #e2e8f0;
+    }
+    .table-panel td { padding: 3px 2px; }
+    .table-panel input {
+      width: 100%; padding: 5px 6px; border: 1px solid #e2e8f0; border-radius: 4px;
+      font-size: 0.8rem; font-family: inherit; background: #f8fafc;
+    }
+    .table-panel input:focus { outline: none; border-color: #3b82f6; background: #fff; }
+    .table-panel .col-task { width: 55px; }
+    .table-panel .col-dur { width: 50px; }
+    .table-panel .col-pred { }
+    .table-panel .col-del { width: 28px; }
+    .table-panel .del-btn {
+      background: none; border: none; color: #94a3b8; cursor: pointer;
+      font-size: 1rem; padding: 2px 4px; border-radius: 4px;
+    }
+    .table-panel .del-btn:hover { color: #ef4444; background: #fef2f2; }
+    .table-panel-actions { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #e2e8f0; }
+    .graph-area { flex: 1; position: relative; min-width: 0; overflow: hidden; }
+
+    .toast {
+      position: fixed; bottom: 80px; left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #10b981; color: white; padding: 10px 20px;
+      border-radius: 8px; font-size: 0.875rem; font-weight: 500;
+      opacity: 0; transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none; z-index: 100;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .error-toast { background: #ef4444 !important; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Network Precedence</h1>
+  <div class="header-actions">
+    <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">Upload File</button>
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls" />
+    <button class="btn btn-secondary" id="reset-btn" disabled onclick="resetApp()">Reset</button>
+    <button class="btn btn-export" id="export-btn" disabled onclick="exportPNG()">Export PNG</button>
+  </div>
+</header>
+
+<div class="main-container">
+  <div id="upload-screen">
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <h2>Drop your file here</h2>
+      <p>or click to browse<br>Supports <strong>.csv</strong> and <strong>.xlsx</strong></p>
+    </div>
+    <div class="format-hint">
+      <strong>Expected format:</strong> Columns for <code>Task</code> (or <code>Activity</code>),
+      optionally <code>Weighting</code>, and <code>Predecessors</code> (or <code>Dependencies</code>).
+      Separate multiple predecessors with commas.
+      <pre>Task,Weighting,Predecessors
+A,3,
+B,2,A
+C,4,"A,B"
+D,1,C</pre>
+      Activities become <strong>labeled arrows</strong>. Nodes are auto-numbered event milestones.
+    </div>
+    <button class="btn btn-secondary" onclick="startManualEntry()">Or type it in manually</button>
+  </div>
+
+  <div id="graph-screen">
+    <div id="table-panel" class="table-panel">
+      <div class="table-panel-header">
+        <span>Precedence Table</span>
+      </div>
+      <div class="table-panel-body">
+        <table>
+          <thead><tr>
+            <th class="col-task">Task</th>
+            <th class="col-dur">Dur.</th>
+            <th class="col-pred">Predecessors</th>
+            <th class="col-del"></th>
+          </tr></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+        <button class="btn btn-secondary" onclick="addTableRow()" style="width:100%;margin-top:6px;font-size:0.78rem;padding:5px">+ Add Row</button>
+      </div>
+      <div class="table-panel-actions">
+        <button class="btn btn-primary" onclick="applyTable()" style="flex:1">Apply</button>
+      </div>
+    </div>
+    <div class="graph-area">
+      <canvas id="network-canvas"></canvas>
+      <div id="options-panel" class="options-panel"></div>
+    </div>
+    <div class="toolbar">
+      <label>Node size <input type="range" id="node-size" min="16" max="60" value="30"></label>
+      <div class="separator"></div>
+      <label>Font <input type="range" id="font-size" min="8" max="24" value="13"></label>
+      <div class="separator"></div>
+      <label><input type="checkbox" id="show-weighting" checked> Weighting</label>
+      <div class="separator"></div>
+      <label><input type="checkbox" id="show-numbers" checked> Numbers</label>
+      <div class="separator"></div>
+      <button class="btn btn-secondary" onclick="autoLayout()">Auto Layout</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const canvas = document.getElementById('network-canvas');
+const ctx = canvas.getContext('2d');
+let dpr = window.devicePixelRatio || 1;
+
+let events = [];
+let arrows = [];
+let dragging = null;
+let dragOffsetX = 0, dragOffsetY = 0;
+let panX = 0, panY = 0;
+let isPanning = false;
+let panStartX = 0, panStartY = 0;
+let hoveredEvent = null;
+let hoveredArrow = null;
+let hoveredLabel = null;
+let selectedEvent = null;
+let selectedArrow = null;
+let draggingLabel = null;
+let didDrag = false;
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+function getNodeSize() { return +document.getElementById('node-size').value; }
+function getFontSize() { return +document.getElementById('font-size').value; }
+function getShowWeighting() { return document.getElementById('show-weighting').checked; }
+function getShowNumbers() { return document.getElementById('show-numbers').checked; }
+
+// ---- FILE PARSING ----
+
+function parseFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+  if (ext === 'csv') {
+    reader.onload = e => { try { processRows(parseCSV(e.target.result)); } catch (err) { showToast(err.message, true); } };
+    reader.readAsText(file);
+  } else {
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        processRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' }));
+      } catch (err) { showToast('Failed to parse file: ' + err.message, true); }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) throw new Error('CSV needs header + at least one data row');
+  const headers = parseCSVLine(lines[0]);
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const vals = parseCSVLine(line);
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (vals[i] || '').trim());
+    return obj;
+  });
+}
+
+function parseCSVLine(line) {
+  const result = []; let current = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"' && line[i+1] === '"') { current += '"'; i++; }
+      else if (ch === '"') inQ = false;
+      else current += ch;
+    } else {
+      if (ch === '"') inQ = true;
+      else if (ch === ',') { result.push(current); current = ''; }
+      else current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+function findColumn(row, ...names) {
+  const keys = Object.keys(row);
+  for (const name of names) {
+    const found = keys.find(k => k.toLowerCase().replace(/[^a-z]/g,'') === name.toLowerCase().replace(/[^a-z]/g,''));
+    if (found) return found;
+  }
+  return null;
+}
+
+// ---- AOA CONSTRUCTION ----
+
+function processRows(rows) {
+  if (!rows.length) { showToast('No data rows found', true); return; }
+
+  const taskCol = findColumn(rows[0], 'task','activity','node','id','name');
+  const predCol = findColumn(rows[0], 'predecessors','predecessor','dependencies','dependency','deps','predec','depends','dependson','after');
+  const durCol  = findColumn(rows[0], 'weighting','dur','time','days','length');
+
+  if (!taskCol) { showToast('No "Task" or "Activity" column found', true); return; }
+  if (!predCol) { showToast('No "Predecessors" or "Dependencies" column found', true); return; }
+
+  deselect();
+  const activities = [];
+  rows.forEach(row => {
+    const id = String(row[taskCol]).trim();
+    if (!id) return;
+    const dur = durCol ? parseFloat(row[durCol]) || 0 : 0;
+    const rawPreds = String(row[predCol]).trim();
+    let preds = [];
+    if (rawPreds && rawPreds !== '-' && rawPreds !== '0' && rawPreds.toLowerCase() !== 'none') {
+      preds = rawPreds.split(/[,;\s]+/).map(p => p.trim()).filter(Boolean);
+    }
+    activities.push({ id, weighting: dur, predecessors: preds });
+  });
+
+  generateGraph(activities, false);
+  populateTable(activities);
+  showGraph();
+  showToast(`Loaded ${activities.length} activities, ${events.length} events`);
+}
+
+function generateGraph(activities, preserveCustoms) {
+  let customs = {};
+  if (preserveCustoms) {
+    arrows.forEach(a => {
+      if (!a.isDummy) {
+        customs[a.label] = {
+          curve: a.curve, color: a.color, lineWidth: a.lineWidth,
+          dash: [...a.dash], labelDx: a.labelDx, labelDy: a.labelDy
+        };
+      }
+    });
+  }
+  deselect();
+  reduceTransitive(activities);
+  buildAOA(activities);
+  if (preserveCustoms) {
+    arrows.forEach(a => {
+      if (!a.isDummy && customs[a.label]) Object.assign(a, customs[a.label]);
+    });
+  }
+  autoLayout();
+}
+
+// ---- TABLE EDITOR ----
+
+function populateTable(activities) {
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  activities.forEach(a => addTableRowWith(a.id, a.weighting || '', a.predecessors.join(', ')));
+}
+
+function addTableRowWith(task, dur, preds) {
+  const tbody = document.getElementById('table-body');
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input type="text" value="' + (task||'') + '" class="inp-task"></td>' +
+    '<td><input type="number" value="' + (dur||'') + '" class="inp-dur" min="0" step="any"></td>' +
+    '<td><input type="text" value="' + (preds||'') + '" class="inp-pred"></td>' +
+    '<td><button class="del-btn" onclick="this.closest(\'tr\').remove()">&times;</button></td>';
+  tbody.appendChild(tr);
+  return tr;
+}
+
+function addTableRow() {
+  const tr = addTableRowWith('', '', '');
+  tr.querySelector('.inp-task').focus();
+}
+
+function readTable() {
+  const activities = [];
+  document.querySelectorAll('#table-body tr').forEach(tr => {
+    const task = tr.querySelector('.inp-task').value.trim();
+    if (!task) return;
+    const dur = parseFloat(tr.querySelector('.inp-dur').value) || 0;
+    const raw = tr.querySelector('.inp-pred').value.trim();
+    let preds = [];
+    if (raw && raw !== '-' && raw.toLowerCase() !== 'none') {
+      preds = raw.split(/[,;\s]+/).map(p => p.trim()).filter(Boolean);
+    }
+    activities.push({ id: task, weighting: dur, predecessors: preds });
+  });
+  return activities;
+}
+
+function applyTable() {
+  const activities = readTable();
+  if (!activities.length) { showToast('Add at least one task', true); return; }
+  generateGraph(activities, true);
+  draw();
+  showToast(`Applied ${activities.length} activities`);
+}
+
+function toggleTablePanel() {
+  document.getElementById('table-panel').classList.toggle('open');
+  setTimeout(resizeCanvas, 20);
+}
+
+function startManualEntry() {
+  events = []; arrows = [];
+  document.getElementById('table-body').innerHTML = '';
+  for (let i = 0; i < 4; i++) addTableRowWith('', '', '');
+  showGraph();
+  document.getElementById('table-panel').classList.add('open');
+  setTimeout(() => {
+    resizeCanvas();
+    document.querySelector('#table-body .inp-task').focus();
+  }, 30);
+}
+
+function reduceTransitive(activities) {
+  const actMap = {};
+  activities.forEach(a => actMap[a.id] = a);
+  function allPreds(id, visited) {
+    if (!visited) visited = new Set();
+    const act = actMap[id];
+    if (!act) return visited;
+    act.predecessors.forEach(p => { if (!visited.has(p)) { visited.add(p); allPreds(p, visited); } });
+    return visited;
+  }
+  activities.forEach(a => {
+    if (a.predecessors.length <= 1) return;
+    const reduced = [];
+    a.predecessors.forEach(p => {
+      const others = a.predecessors.filter(q => q !== p);
+      if (!others.some(q => allPreds(q).has(p))) reduced.push(p);
+    });
+    a.predecessors = reduced;
+  });
+}
+
+function buildAOA(activities) {
+  let nextId = 1;
+  const startEvent = nextId++;
+  const actEnd = {};
+  activities.forEach(a => actEnd[a.id] = nextId++);
+
+  const actMap = {};
+  activities.forEach(a => actMap[a.id] = a);
+
+  function transitivePredCount(id) {
+    const visited = new Set();
+    (function visit(aid) {
+      const act = actMap[aid];
+      if (!act) return;
+      act.predecessors.forEach(p => { if (!visited.has(p)) { visited.add(p); visit(p); } });
+    })(id);
+    return visited.size;
+  }
+
+  const groups = {};
+  activities.forEach(a => {
+    const key = a.predecessors.length === 0 ? '' : [...a.predecessors].sort().join(',');
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(a);
+  });
+
+  const occupiedEnds = new Set();
+  for (const key of Object.keys(groups)) {
+    if (key !== '' && !key.includes(',')) occupiedEnds.add(actEnd[key]);
+  }
+
+  const actStart = {};
+  const dummies = [];
+
+  for (const [key, group] of Object.entries(groups)) {
+    if (key === '') {
+      group.forEach(a => actStart[a.id] = startEvent);
+    } else {
+      const preds = key.split(',');
+      if (preds.length === 1) {
+        group.forEach(a => actStart[a.id] = actEnd[preds[0]]);
+      } else {
+        const safePreds = preds
+          .filter(p => !occupiedEnds.has(actEnd[p]))
+          .sort((a, b) => transitivePredCount(b) - transitivePredCount(a));
+        if (safePreds.length > 0) {
+          const chosen = safePreds[0];
+          const target = actEnd[chosen];
+          group.forEach(a => actStart[a.id] = target);
+          preds.filter(p => p !== chosen).forEach(p => dummies.push({ from: actEnd[p], to: target }));
+          occupiedEnds.add(target);
+        } else {
+          const mergeEv = nextId++;
+          group.forEach(a => actStart[a.id] = mergeEv);
+          preds.forEach(p => dummies.push({ from: actEnd[p], to: mergeEv }));
+        }
+      }
+    }
+  }
+
+  const isPred = new Set();
+  activities.forEach(a => a.predecessors.forEach(p => isPred.add(p)));
+  const terminals = activities.filter(a => !isPred.has(a.id));
+  if (terminals.length > 1) {
+    const endEv = nextId++;
+    terminals.forEach(a => dummies.push({ from: actEnd[a.id], to: endEv }));
+  }
+
+  const usedIds = new Set();
+  usedIds.add(startEvent);
+  activities.forEach(a => { usedIds.add(actStart[a.id]); usedIds.add(actEnd[a.id]); });
+  dummies.forEach(d => { usedIds.add(d.from); usedIds.add(d.to); });
+
+  arrows = [];
+  activities.forEach(a => {
+    arrows.push({
+      from: actStart[a.id], to: actEnd[a.id], label: a.id, weighting: a.weighting,
+      isDummy: false, curve: 0, color: '#1e293b', lineWidth: 2, dash: [],
+      labelDx: 0, labelDy: 0
+    });
+  });
+  dummies.forEach(d => {
+    arrows.push({
+      from: d.from, to: d.to, label: '', weighting: 0,
+      isDummy: true, curve: 0, color: '#1e293b', lineWidth: 2, dash: [6, 4]
+    });
+  });
+
+  arrows = arrows.filter(a => {
+    if (!a.isDummy) return true;
+    const others = arrows.filter(o => o !== a);
+    const visited = new Set();
+    const q = [a.from];
+    while (q.length) {
+      const cur = q.shift();
+      if (cur === a.to) return false;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      others.forEach(o => { if (o.from === cur && !visited.has(o.to)) q.push(o.to); });
+    }
+    return true;
+  });
+
+  let collapsed = true;
+  while (collapsed) {
+    collapsed = false;
+    const outgoing = {};
+    arrows.forEach(a => { if (!outgoing[a.from]) outgoing[a.from] = []; outgoing[a.from].push(a); });
+    for (const evId of Object.keys(outgoing)) {
+      const outs = outgoing[evId];
+      if (outs.length === 1 && outs[0].isDummy) {
+        const target = outs[0].to;
+        arrows.forEach(a => { if (a.to === +evId) a.to = target; });
+        arrows = arrows.filter(a => a !== outs[0]);
+        collapsed = true;
+        break;
+      }
+    }
+  }
+
+  usedIds.clear();
+  arrows.forEach(a => { usedIds.add(a.from); usedIds.add(a.to); });
+  const adj = {};
+  const inDeg = {};
+  usedIds.forEach(id => { adj[id] = []; inDeg[id] = 0; });
+  arrows.forEach(a => { adj[a.from].push(a.to); inDeg[a.to]++; });
+  const queue = [...usedIds].filter(id => inDeg[id] === 0).sort((a,b) => a-b);
+  const order = [];
+  while (queue.length) {
+    queue.sort((a,b) => a-b);
+    const cur = queue.shift();
+    order.push(cur);
+    for (const nb of adj[cur]) { inDeg[nb]--; if (inDeg[nb] === 0) queue.push(nb); }
+  }
+  const remap = {};
+  order.forEach((old, i) => remap[old] = i + 1);
+  arrows.forEach(a => { a.from = remap[a.from]; a.to = remap[a.to]; });
+  events = order.map(old => ({
+    id: remap[old], x: 0, y: 0, fillColor: '#ffffff', borderColor: '#1e293b'
+  }));
+}
+
+// ---- LAYOUT ----
+
+function autoLayout() {
+  deselect();
+  const levels = {};
+  events.forEach(e => levels[e.id] = 0);
+  let changed = true, guard = events.length * arrows.length + 1;
+  while (changed && guard-- > 0) {
+    changed = false;
+    arrows.forEach(a => {
+      if (levels[a.to] <= levels[a.from]) { levels[a.to] = levels[a.from] + 1; changed = true; }
+    });
+  }
+
+  const maxLv = Math.max(0, ...Object.values(levels));
+  const groups = {};
+  events.forEach(e => { const lv = levels[e.id]; if (!groups[lv]) groups[lv] = []; groups[lv].push(e); });
+
+  const cw = canvas.width / dpr, ch = canvas.height / dpr;
+  const hSpace = maxLv > 0 ? (cw - 200) / maxLv : 0;
+  panX = 0; panY = 0;
+  events.forEach(e => e.x = 100 + levels[e.id] * hSpace);
+
+  const evMap = {};
+  events.forEach(e => evMap[e.id] = e);
+  const outgoing = {};
+  arrows.forEach(a => { if (!outgoing[a.from]) outgoing[a.from] = []; outgoing[a.from].push(a.to); });
+  const hasIncoming = new Set();
+  arrows.forEach(a => hasIncoming.add(a.to));
+  const sources = events.filter(e => !hasIncoming.has(e.id));
+
+  const allPaths = [];
+  const PATH_LIMIT = 1000;
+  function findPaths(id, path) {
+    if (allPaths.length >= PATH_LIMIT) return;
+    path.push(id);
+    const outs = outgoing[id] || [];
+    if (outs.length === 0) allPaths.push([...path]);
+    else outs.forEach(sid => findPaths(sid, path));
+    path.pop();
+  }
+  sources.forEach(s => findPaths(s.id, []));
+
+  if (allPaths.length > 1 && allPaths.length < PATH_LIMIT) {
+    const laneSums = {}, laneCounts = {};
+    events.forEach(e => { laneSums[e.id] = 0; laneCounts[e.id] = 0; });
+    allPaths.forEach((path, idx) => { path.forEach(id => { laneSums[id] += idx; laneCounts[id]++; }); });
+    const numPaths = allPaths.length, margin = 80;
+    events.forEach(e => {
+      if (laneCounts[e.id] > 0) {
+        e.y = margin + laneSums[e.id] / laneCounts[e.id] / (numPaths - 1) * (ch - margin * 2);
+      } else { e.y = ch / 2; }
+    });
+    Object.values(groups).forEach(grp => {
+      if (grp.length <= 1) return;
+      grp.sort((a, b) => a.y - b.y);
+      for (let i = 1; i < grp.length; i++) {
+        if (grp[i].y - grp[i-1].y < 60) grp[i].y = grp[i-1].y + 60;
+      }
+    });
+  } else {
+    Object.values(groups).forEach(grp => {
+      const vSpace = ch / (grp.length + 1);
+      grp.forEach((e, i) => e.y = vSpace * (i + 1));
+    });
+  }
+  draw();
+}
+
+// ---- EDGE GEOMETRY ----
+
+function getEdgeGeom(a, evMap, nodeR) {
+  const fe = evMap[a.from], te = evMap[a.to];
+  if (!fe || !te) return null;
+  const dx = te.x - fe.x, dy = te.y - fe.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist === 0) return null;
+  const ux = dx/dist, uy = dy/dist;
+  const perpX = -uy, perpY = ux;
+
+  const midX = (fe.x + te.x)/2, midY = (fe.y + te.y)/2;
+  const cpx = midX + perpX * a.curve, cpy = midY + perpY * a.curve;
+
+  // Arrowhead size scales with line width
+  const aLen = 8 + a.lineWidth * 2;
+  const aHeight = aLen * Math.cos(Math.PI/6);
+
+  let sx, sy, ex, ey;
+  if (a.curve !== 0) {
+    const tdx0 = cpx - fe.x, tdy0 = cpy - fe.y;
+    const td0 = Math.sqrt(tdx0*tdx0 + tdy0*tdy0);
+    if (td0 === 0) return null;
+    sx = fe.x + (tdx0/td0) * (nodeR + 2);
+    sy = fe.y + (tdy0/td0) * (nodeR + 2);
+
+    const tdx1 = te.x - cpx, tdy1 = te.y - cpy;
+    const td1 = Math.sqrt(tdx1*tdx1 + tdy1*tdy1);
+    if (td1 === 0) return null;
+    ex = te.x - (tdx1/td1) * (nodeR + aHeight);
+    ey = te.y - (tdy1/td1) * (nodeR + aHeight);
+  } else {
+    sx = fe.x + ux * (nodeR + 2);
+    sy = fe.y + uy * (nodeR + 2);
+    ex = te.x - ux * (nodeR + aHeight);
+    ey = te.y - uy * (nodeR + aHeight);
+  }
+
+  const mx = (sx+ex)/2, my = (sy+ey)/2;
+  return { sx, sy, ex, ey, mx, my, cpx, cpy, ux, uy, perpX, perpY, dist, aLen };
+}
+
+function getLabelBasePos(a, evMap, nodeR) {
+  const g = getEdgeGeom(a, evMap, nodeR);
+  if (!g) return null;
+  let lx, ly;
+  if (a.curve !== 0) {
+    lx = 0.25*g.sx + 0.5*g.cpx + 0.25*g.ex;
+    ly = 0.25*g.sy + 0.5*g.cpy + 0.25*g.ey;
+    const sign = a.curve >= 0 ? 1 : -1;
+    lx += g.perpX * sign * 12;
+    ly += g.perpY * sign * 12;
+  } else {
+    let px = -g.uy, py = g.ux;
+    if (py > 0 || (py === 0 && px > 0)) { px = -px; py = -py; }
+    lx = g.mx + px*14;
+    ly = g.my + py*14;
+  }
+  return { x: lx, y: ly };
+}
+
+function labelHitTest(mx, my) {
+  const evMap = {};
+  events.forEach(e => evMap[e.id] = e);
+  const nodeR = getNodeSize()/2;
+  const fs = getFontSize();
+  const showDur = getShowWeighting();
+  ctx.font = `bold ${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+  for (let i = arrows.length-1; i >= 0; i--) {
+    const a = arrows[i];
+    if (a.isDummy) continue;
+    const pos = getLabelBasePos(a, evMap, nodeR);
+    if (!pos) continue;
+    const lx = pos.x + a.labelDx, ly = pos.y + a.labelDy;
+    let text = a.label;
+    if (showDur && a.weighting) text += ` (${a.weighting})`;
+    const tw = ctx.measureText(text).width;
+    if (mx >= lx-tw/2-5 && mx <= lx+tw/2+5 && my >= ly-fs/2-4 && my <= ly+fs/2+4) return a;
+  }
+  return null;
+}
+
+// ---- DRAWING ----
+
+function drawNetwork(c, ox, oy, exporting) {
+  c.save();
+  c.translate(ox, oy);
+
+  const nodeR = getNodeSize() / 2;
+  const fs = getFontSize();
+  const showDur = getShowWeighting();
+  const showNums = getShowNumbers();
+  const evMap = {};
+  events.forEach(e => evMap[e.id] = e);
+
+  // Arrows
+  arrows.forEach(a => {
+    const g = getEdgeGeom(a, evMap, nodeR);
+    if (!g) return;
+
+    // Selection glow
+    if (!exporting && a === selectedArrow) {
+      c.save();
+      c.strokeStyle = '#3b82f6'; c.lineWidth = a.lineWidth + 6; c.globalAlpha = 0.25;
+      c.setLineDash([]);
+      drawEdgePath(c, g, a);
+      c.stroke(); c.restore();
+    }
+    // Hover glow
+    if (!exporting && a === hoveredArrow && a !== selectedArrow) {
+      c.save();
+      c.strokeStyle = '#3b82f6'; c.lineWidth = a.lineWidth + 4; c.globalAlpha = 0.15;
+      c.setLineDash([]);
+      drawEdgePath(c, g, a);
+      c.stroke(); c.restore();
+    }
+
+    // Edge line
+    c.beginPath();
+    drawEdgePath(c, g, a);
+    c.strokeStyle = a.color;
+    c.lineWidth = a.lineWidth;
+    c.setLineDash(a.dash);
+    c.stroke();
+    c.setLineDash([]);
+
+    // Arrowhead — sits between line end and node edge, scales with lineWidth
+    let ang;
+    if (a.curve !== 0) {
+      ang = Math.atan2(g.ey - g.cpy, g.ex - g.cpx);
+    } else {
+      ang = Math.atan2(g.ey - g.sy, g.ex - g.sx);
+    }
+    const aLen = g.aLen, aAng = Math.PI/6;
+    const aHeight = aLen * Math.cos(aAng);
+    const tipX = g.ex + Math.cos(ang) * aHeight;
+    const tipY = g.ey + Math.sin(ang) * aHeight;
+    c.beginPath();
+    c.moveTo(tipX, tipY);
+    c.lineTo(tipX - aLen*Math.cos(ang-aAng), tipY - aLen*Math.sin(ang-aAng));
+    c.lineTo(tipX - aLen*Math.cos(ang+aAng), tipY - aLen*Math.sin(ang+aAng));
+    c.closePath();
+    c.fillStyle = a.color;
+    c.fill();
+
+    // Label
+    if (!a.isDummy) {
+      const basePos = getLabelBasePos(a, evMap, nodeR);
+      if (basePos) {
+        const lx = basePos.x + a.labelDx, ly = basePos.y + a.labelDy;
+        let text = a.label;
+        if (showDur && a.weighting) text += ` (${a.weighting})`;
+
+        c.font = `bold ${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+        const tw = c.measureText(text).width;
+        const isLabelHovered = !exporting && hoveredLabel === a;
+        if (!exporting) {
+          c.fillStyle = '#ffffff';
+          c.fillRect(lx - tw/2 - 3, ly - fs/2 - 2, tw + 6, fs + 4);
+        }
+        if (isLabelHovered) {
+          c.strokeStyle = '#3b82f6'; c.lineWidth = 1;
+          c.strokeRect(lx - tw/2 - 3, ly - fs/2 - 2, tw + 6, fs + 4);
+        }
+        c.fillStyle = a.color;
+        c.fillText(text, lx, ly);
+      }
+    }
+  });
+
+  // Event nodes
+  events.forEach(e => {
+    const isH = !exporting && hoveredEvent === e;
+    const isSel = !exporting && selectedEvent === e;
+    const drawR = (isH || isSel) ? nodeR + 3 : nodeR;
+
+    if (showNums) {
+      c.beginPath();
+      c.arc(e.x, e.y, drawR, 0, Math.PI*2);
+      if (!exporting || e.fillColor !== '#ffffff') {
+        c.fillStyle = e.fillColor;
+        c.fill();
+      }
+      c.strokeStyle = isSel ? '#3b82f6' : (isH ? '#3b82f6' : e.borderColor);
+      c.lineWidth = isSel ? 3 : 2.5;
+      c.stroke();
+
+      c.fillStyle = e.borderColor;
+      c.font = `bold ${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText(e.id, e.x, e.y);
+    } else {
+      const r = drawR * 0.55;
+      c.beginPath();
+      c.arc(e.x, e.y, r, 0, Math.PI*2);
+      c.fillStyle = e.borderColor;
+      c.fill();
+      if (isSel || isH) {
+        c.strokeStyle = '#3b82f6'; c.lineWidth = 2.5; c.stroke();
+      }
+    }
+  });
+
+  c.restore();
+}
+
+function drawEdgePath(c, g, a) {
+  c.moveTo(g.sx, g.sy);
+  if (a.curve !== 0) c.quadraticCurveTo(g.cpx, g.cpy, g.ex, g.ey);
+  else c.lineTo(g.ex, g.ey);
+}
+
+function draw() {
+  const cw = canvas.width / dpr, ch = canvas.height / dpr;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cw, ch);
+  drawNetwork(ctx, panX, panY, false);
+}
+
+// ---- INTERACTION ----
+
+function getMousePos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left - panX, y: e.clientY - r.top - panY };
+}
+
+function hitTest(mx, my) {
+  const r = getNodeSize()/2 + 4;
+  for (let i = events.length-1; i >= 0; i--) {
+    const e = events[i];
+    const dx = mx-e.x, dy = my-e.y;
+    if (dx*dx + dy*dy <= r*r) return e;
+  }
+  return null;
+}
+
+function pointToSegDist(px, py, x1, y1, x2, y2) {
+  const dx = x2-x1, dy = y2-y1;
+  const lenSq = dx*dx + dy*dy;
+  if (lenSq === 0) return Math.sqrt((px-x1)**2 + (py-y1)**2);
+  let t = ((px-x1)*dx + (py-y1)*dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.sqrt((px - (x1+t*dx))**2 + (py - (y1+t*dy))**2);
+}
+
+function edgeHitTest(mx, my) {
+  const evMap = {};
+  events.forEach(e => evMap[e.id] = e);
+  const nodeR = getNodeSize()/2;
+  const threshold = 10;
+
+  for (let i = arrows.length-1; i >= 0; i--) {
+    const a = arrows[i];
+    const g = getEdgeGeom(a, evMap, nodeR);
+    if (!g) continue;
+    if (a.curve !== 0) {
+      for (let t = 0; t <= 1; t += 0.04) {
+        const bx = (1-t)*(1-t)*g.sx + 2*(1-t)*t*g.cpx + t*t*g.ex;
+        const by = (1-t)*(1-t)*g.sy + 2*(1-t)*t*g.cpy + t*t*g.ey;
+        if (Math.sqrt((mx-bx)**2 + (my-by)**2) < threshold) return a;
+      }
+    } else {
+      if (pointToSegDist(mx, my, g.sx, g.sy, g.ex, g.ey) < threshold) return a;
+    }
+  }
+  return null;
+}
+
+canvas.addEventListener('mousedown', e => {
+  didDrag = false;
+  const pos = getMousePos(e);
+
+  // Priority: label > node > pan
+  const lbl = labelHitTest(pos.x, pos.y);
+  if (lbl) {
+    draggingLabel = lbl;
+    dragOffsetX = pos.x - (getLabelBasePos(lbl, (() => { const m={}; events.forEach(ev=>m[ev.id]=ev); return m; })(), getNodeSize()/2).x + lbl.labelDx);
+    dragOffsetY = pos.y - (getLabelBasePos(lbl, (() => { const m={}; events.forEach(ev=>m[ev.id]=ev); return m; })(), getNodeSize()/2).y + lbl.labelDy);
+    canvas.style.cursor = 'move';
+    return;
+  }
+
+  const ev = hitTest(pos.x, pos.y);
+  if (ev) {
+    dragging = ev;
+    dragOffsetX = pos.x - ev.x;
+    dragOffsetY = pos.y - ev.y;
+    canvas.style.cursor = 'grabbing';
+  } else {
+    isPanning = true;
+    panStartX = e.clientX - panX;
+    panStartY = e.clientY - panY;
+    canvas.style.cursor = 'grabbing';
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const pos = getMousePos(e);
+  if (draggingLabel) {
+    didDrag = true;
+    const evMap = {}; events.forEach(ev => evMap[ev.id] = ev);
+    const base = getLabelBasePos(draggingLabel, evMap, getNodeSize()/2);
+    if (base) {
+      draggingLabel.labelDx = pos.x - dragOffsetX - base.x;
+      draggingLabel.labelDy = pos.y - dragOffsetY - base.y;
+    }
+    draw();
+  } else if (dragging) {
+    didDrag = true;
+    dragging.x = pos.x - dragOffsetX;
+    dragging.y = pos.y - dragOffsetY;
+    draw();
+  } else if (isPanning) {
+    didDrag = true;
+    panX = e.clientX - panStartX;
+    panY = e.clientY - panStartY;
+    draw();
+  } else {
+    const lbl = labelHitTest(pos.x, pos.y);
+    const node = lbl ? null : hitTest(pos.x, pos.y);
+    const edge = (lbl || node) ? null : edgeHitTest(pos.x, pos.y);
+    if (lbl !== hoveredLabel || node !== hoveredEvent || edge !== hoveredArrow) {
+      hoveredLabel = lbl;
+      hoveredEvent = node;
+      hoveredArrow = edge;
+      canvas.style.cursor = lbl ? 'move' : (node || edge) ? 'pointer' : 'grab';
+      draw();
+    }
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (!didDrag) {
+    const pos = getMousePos(e);
+    const lbl = labelHitTest(pos.x, pos.y);
+    if (lbl) {
+      selectedEvent = null;
+      selectedArrow = lbl;
+      showEdgePanel(lbl);
+    } else {
+      const ev = hitTest(pos.x, pos.y);
+      if (ev) {
+        selectedArrow = null;
+        selectedEvent = ev;
+        showNodePanel(ev);
+      } else {
+        const arrow = edgeHitTest(pos.x, pos.y);
+        if (arrow) {
+          selectedEvent = null;
+          selectedArrow = arrow;
+          showEdgePanel(arrow);
+        } else {
+          deselect();
+        }
+      }
+    }
+    draw();
+  }
+  dragging = null; isPanning = false; draggingLabel = null;
+  canvas.style.cursor = hoveredLabel ? 'move' : (hoveredEvent || hoveredArrow) ? 'pointer' : 'grab';
+});
+
+canvas.addEventListener('mouseleave', () => {
+  dragging = null; isPanning = false; draggingLabel = null;
+  hoveredEvent = null; hoveredArrow = null; hoveredLabel = null; draw();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { deselect(); draw(); }
+});
+
+// ---- OPTIONS PANEL ----
+
+function deselect() {
+  selectedArrow = null; selectedEvent = null;
+  document.getElementById('options-panel').style.display = 'none';
+}
+
+function positionPanel(screenX, screenY) {
+  const panel = document.getElementById('options-panel');
+  const parent = document.getElementById('graph-screen');
+  const pr = parent.getBoundingClientRect();
+  panel.style.display = 'block';
+  let left = screenX + 20;
+  let top = screenY - 40;
+  const pw = 220;
+  if (left + pw > pr.width) left = screenX - pw - 20;
+  if (top < 10) top = 10;
+  if (top + 200 > pr.height - 60) top = pr.height - 260;
+  panel.style.left = left + 'px';
+  panel.style.top = top + 'px';
+}
+
+function showEdgePanel(arrow) {
+  const panel = document.getElementById('options-panel');
+  const dashIdx = arrow.dash.length === 0 ? 0 : (arrow.dash[0] > 4 ? 1 : 2);
+  panel.innerHTML = `
+    <div class="panel-title">Edge: ${arrow.label || 'Dummy'}</div>
+    <div class="opt-row"><span class="opt-label">Curve</span><input type="range" min="-150" max="150" value="${arrow.curve}" id="opt-curve"><span id="opt-curve-val">${arrow.curve}</span></div>
+    <div class="opt-row"><span class="opt-label">Color</span><input type="color" value="${arrow.color}" id="opt-color"></div>
+    <div class="opt-row"><span class="opt-label">Weight</span><input type="range" min="1" max="6" value="${arrow.lineWidth}" id="opt-weight"><span id="opt-weight-val">${arrow.lineWidth}</span></div>
+    <div class="opt-row"><span class="opt-label">Style</span>
+      <div class="style-btns">
+        <button class="style-btn${dashIdx===0?' active':''}" data-dash="">Solid</button>
+        <button class="style-btn${dashIdx===1?' active':''}" data-dash="8,4">Dash</button>
+        <button class="style-btn${dashIdx===2?' active':''}" data-dash="2,4">Dot</button>
+      </div>
+    </div>`;
+
+  const evMap = {};
+  events.forEach(e => evMap[e.id] = e);
+  const fe = evMap[arrow.from], te = evMap[arrow.to];
+  positionPanel((fe.x + te.x)/2 + panX, (fe.y + te.y)/2 + panY);
+
+  document.getElementById('opt-curve').addEventListener('input', e => {
+    arrow.curve = +e.target.value;
+    document.getElementById('opt-curve-val').textContent = arrow.curve;
+    draw();
+  });
+  document.getElementById('opt-color').addEventListener('input', e => { arrow.color = e.target.value; draw(); });
+  document.getElementById('opt-weight').addEventListener('input', e => {
+    arrow.lineWidth = +e.target.value;
+    document.getElementById('opt-weight-val').textContent = arrow.lineWidth;
+    draw();
+  });
+  panel.querySelectorAll('.style-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const d = btn.dataset.dash;
+      arrow.dash = d ? d.split(',').map(Number) : [];
+      panel.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      draw();
+    });
+  });
+}
+
+function showNodePanel(ev) {
+  const panel = document.getElementById('options-panel');
+  panel.innerHTML = `
+    <div class="panel-title">Event ${ev.id}</div>
+    <div class="opt-row"><span class="opt-label">Fill</span><input type="color" value="${ev.fillColor}" id="opt-fill"></div>
+    <div class="opt-row"><span class="opt-label">Border</span><input type="color" value="${ev.borderColor}" id="opt-border"></div>`;
+
+  positionPanel(ev.x + panX, ev.y + panY);
+
+  document.getElementById('opt-fill').addEventListener('input', e => { ev.fillColor = e.target.value; draw(); });
+  document.getElementById('opt-border').addEventListener('input', e => { ev.borderColor = e.target.value; draw(); });
+}
+
+// ---- CONTROLS ----
+
+document.getElementById('node-size').addEventListener('input', draw);
+document.getElementById('font-size').addEventListener('input', draw);
+document.getElementById('show-weighting').addEventListener('change', draw);
+document.getElementById('show-numbers').addEventListener('change', draw);
+
+// ---- FILE HANDLING ----
+
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files.length) parseFile(e.target.files[0]);
+});
+const dropZone = document.getElementById('drop-zone');
+['dragenter','dragover'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add('drag-over'); }));
+['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, () => dropZone.classList.remove('drag-over')));
+dropZone.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files.length) parseFile(e.dataTransfer.files[0]); });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files.length) parseFile(e.dataTransfer.files[0]); });
+
+// ---- EXPORT ----
+
+function exportPNG() {
+  if (!events.length) return;
+  const nodeR = getNodeSize()/2, fs = getFontSize();
+  const showDur = getShowWeighting();
+  const evMap = {};
+  events.forEach(e => evMap[e.id] = e);
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  events.forEach(e => {
+    minX = Math.min(minX, e.x - nodeR - 4);
+    minY = Math.min(minY, e.y - nodeR - 4);
+    maxX = Math.max(maxX, e.x + nodeR + 4);
+    maxY = Math.max(maxY, e.y + nodeR + 4);
+  });
+  // Account for curved edges and dragged labels
+  ctx.font = `bold ${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+  arrows.forEach(a => {
+    if (a.curve !== 0) {
+      const g = getEdgeGeom(a, evMap, nodeR);
+      if (g) {
+        minX = Math.min(minX, g.cpx - 10); minY = Math.min(minY, g.cpy - 10);
+        maxX = Math.max(maxX, g.cpx + 10); maxY = Math.max(maxY, g.cpy + 10);
+      }
+    }
+    if (!a.isDummy) {
+      const base = getLabelBasePos(a, evMap, nodeR);
+      if (base) {
+        const lx = base.x + a.labelDx, ly = base.y + a.labelDy;
+        let text = a.label;
+        if (showDur && a.weighting) text += ` (${a.weighting})`;
+        const tw = ctx.measureText(text).width;
+        minX = Math.min(minX, lx - tw/2 - 5);
+        minY = Math.min(minY, ly - fs/2 - 4);
+        maxX = Math.max(maxX, lx + tw/2 + 5);
+        maxY = Math.max(maxY, ly + fs/2 + 4);
+      }
+    }
+  });
+
+  // 2mm margin at 96 DPI ≈ 7.6px, round to 8
+  const pad = 8;
+  const w = (maxX-minX)+pad*2, h = (maxY-minY)+pad*2;
+  const ec = document.createElement('canvas');
+  const scale = 2;
+  ec.width = w*scale; ec.height = h*scale;
+  const ectx = ec.getContext('2d');
+  ectx.scale(scale, scale);
+  drawNetwork(ectx, -minX+pad, -minY+pad, true);
+
+  const link = document.createElement('a');
+  link.download = 'network-precedence.png';
+  link.href = ec.toDataURL('image/png');
+  link.click();
+  showToast('PNG exported');
+}
+
+// ---- UI STATE ----
+
+function showGraph() {
+  document.getElementById('upload-screen').style.display = 'none';
+  document.getElementById('graph-screen').style.display = 'flex';
+  document.getElementById('table-panel').classList.add('open');
+  document.getElementById('reset-btn').disabled = false;
+  document.getElementById('export-btn').disabled = false;
+  setTimeout(() => { resizeCanvas(); autoLayout(); }, 20);
+}
+
+function resetApp() {
+  events = []; arrows = []; panX = 0; panY = 0;
+  deselect();
+  document.getElementById('upload-screen').style.display = '';
+  document.getElementById('graph-screen').style.display = 'none';
+  document.getElementById('reset-btn').disabled = true;
+  document.getElementById('export-btn').disabled = true;
+  document.getElementById('file-input').value = '';
+  document.getElementById('table-body').innerHTML = '';
+  document.getElementById('table-panel').classList.remove('open');
+}
+
+function showToast(msg, isError) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isError ? ' error-toast' : '');
+  setTimeout(() => el.className = 'toast', 2500);
+}
+
+window.addEventListener('resize', () => { if (events.length) resizeCanvas(); });
+</script>
+
+</body>
+</html>
