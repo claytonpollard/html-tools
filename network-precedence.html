@@ -63,14 +63,38 @@
     #network-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
 
     .toolbar {
-      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
       background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px;
-      padding: 8px 12px; display: flex; gap: 8px; align-items: center; justify-content: center;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.08); flex-wrap: wrap; max-width: 95%;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08); overflow: hidden; max-width: 95%;
     }
-    .toolbar label { font-size: 0.8rem; color: #64748b; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-    .toolbar input[type="range"] { width: 80px; accent-color: #3b82f6; }
-    .toolbar .separator { width: 1px; height: 24px; background: #e2e8f0; }
+    .toolbar-tabs {
+      display: flex; align-items: center; gap: 0;
+    }
+    .toolbar-tab {
+      padding: 8px 14px; font-size: 0.75rem; font-weight: 500;
+      color: #64748b; cursor: pointer; border: none; background: none;
+      border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s;
+    }
+    .toolbar-tab:hover { color: #334155; background: #f8fafc; }
+    .toolbar-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; background: #f8fafc; }
+    .toolbar-content {
+      display: none; padding: 8px 16px;
+      align-items: center; gap: 14px; flex-wrap: wrap;
+      border-top: 1px solid #e2e8f0;
+    }
+    .toolbar-content.open { display: flex; }
+    .toolbar-content label {
+      font-size: 0.78rem; color: #64748b; display: flex; align-items: center; gap: 5px; white-space: nowrap;
+    }
+    .toolbar-content input[type="range"] { width: 70px; accent-color: #3b82f6; }
+    .toolbar-content select {
+      font-size: 0.75rem; padding: 3px 6px; border: 1px solid #cbd5e1;
+      border-radius: 4px; background: #fff; color: #334155;
+    }
+    .toolbar-content input[type="number"] {
+      width: 38px; font-size: 0.7rem; padding: 2px 4px;
+      border: 1px solid #cbd5e1; border-radius: 4px; text-align: center;
+    }
 
     .options-panel {
       position: absolute; background: #ffffff; border: 1px solid #e2e8f0;
@@ -137,7 +161,32 @@
     }
     .table-panel .del-btn:hover { color: #ef4444; background: #fef2f2; }
     .table-panel-actions { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #e2e8f0; }
+    .hidden-edge-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 8px; background: #f8fafc; border: 1px solid #e2e8f0;
+      border-radius: 6px; font-size: 0.78rem; color: #475569;
+    }
+    .hidden-edge-item button {
+      background: none; border: none; color: #3b82f6; cursor: pointer;
+      font-size: 0.75rem; font-weight: 500; padding: 2px 6px; border-radius: 4px;
+    }
+    .hidden-edge-item button:hover { background: #eff6ff; }
     .graph-area { flex: 1; position: relative; min-width: 0; overflow: hidden; }
+
+    .preset-panel {
+      position: absolute; top: 12px; right: 12px; z-index: 40;
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 6px 10px; display: none; gap: 8px; align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06); font-size: 0.8rem;
+    }
+    .preset-panel span { color: #64748b; font-weight: 500; }
+    .preset-btn {
+      padding: 4px 12px; border: 1px solid #cbd5e1; border-radius: 6px;
+      background: #f8fafc; color: #334155; cursor: pointer; font-size: 0.8rem; font-weight: 500;
+      transition: background 0.15s;
+    }
+    .preset-btn:hover { background: #e2e8f0; }
+    .preset-btn.active { background: #3b82f6; border-color: #3b82f6; color: white; }
 
     .toast {
       position: fixed; bottom: 80px; left: 50%;
@@ -203,27 +252,55 @@ D,1,C</pre>
       <div class="table-panel-actions">
         <button class="btn btn-primary" onclick="applyTable()" style="flex:1">Apply</button>
       </div>
+      <div id="hidden-edges-section" style="display:none;border-top:1px solid #e2e8f0;padding:10px 12px;">
+        <div style="font-size:0.78rem;font-weight:600;color:#64748b;margin-bottom:6px;">Hidden Edges</div>
+        <div id="hidden-edges-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+      </div>
     </div>
     <div class="graph-area">
       <canvas id="network-canvas"></canvas>
+      <div id="preset-panel" class="preset-panel">
+        <span>Preset</span>
+        <button class="preset-btn active" onclick="applyPreset('sace')">SACE</button>
+        <button class="preset-btn" onclick="applyPreset('vce')">VCE</button>
+      </div>
       <div id="options-panel" class="options-panel"></div>
       <div class="toolbar">
-      <label>Node size <input type="range" id="node-size" min="16" max="100" value="50"><input type="number" id="node-size-num" min="16" max="100" value="50" style="width:40px;font-size:0.75rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;text-align:center;"></label>
-      <div class="separator"></div>
-      <label>Font <input type="range" id="font-size" min="8" max="24" value="13"><input type="number" id="font-size-num" min="8" max="24" value="13" style="width:40px;font-size:0.75rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;text-align:center;"></label>
-      <div class="separator"></div>
-      <label><input type="checkbox" id="show-weighting" checked> Weighting</label>
-      <div class="separator"></div>
-      <label><input type="checkbox" id="show-numbers"> Node Numbers</label>
-      <div class="separator"></div>
-      <label>Shape <select id="node-shape" style="font-size:0.8rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;">
-        <option value="circle">Circle</option>
-        <option value="split" selected>Split Ellipse</option>
-      </select></label>
-      <div class="separator"></div>
-      <label><input type="checkbox" id="auto-curves" checked> Auto Curves</label>
-      <div class="separator"></div>
-      <button class="btn btn-secondary" onclick="autoLayout()">Auto Layout</button>
+        <div class="toolbar-tabs">
+          <button class="toolbar-tab active" data-tab="size">Size</button>
+          <button class="toolbar-tab" data-tab="nodes">Nodes</button>
+          <button class="toolbar-tab" data-tab="labels">Labels</button>
+          <button class="toolbar-tab" data-tab="edges">Edges</button>
+          <button class="btn btn-secondary" onclick="autoLayout()" style="font-size:0.72rem;padding:5px 10px;margin:4px 6px 4px auto;border-radius:5px;">Auto Layout</button>
+        </div>
+        <div class="toolbar-content open" data-tab="size">
+          <label>Node <input type="range" id="node-size" min="16" max="100" value="50"><input type="number" id="node-size-num" min="16" max="100" value="50"></label>
+          <label>Font <input type="range" id="font-size" min="8" max="24" value="13"><input type="number" id="font-size-num" min="8" max="24" value="13"></label>
+        </div>
+        <div class="toolbar-content" data-tab="nodes">
+          <label>Shape <select id="node-shape">
+            <option value="circle">Circle</option>
+            <option value="split" selected>Split Ellipse</option>
+          </select></label>
+          <label><input type="checkbox" id="show-numbers"> Numbers</label>
+        </div>
+        <div class="toolbar-content" data-tab="labels">
+          <label>Style <select id="label-style">
+            <option value="split" selected>Split</option>
+            <option value="combined">Combined</option>
+          </select></label>
+          <label><input type="checkbox" id="show-weighting" checked> Weighting</label>
+          <label><input type="checkbox" id="italic-names"> Italic</label>
+          <label><input type="checkbox" id="bold-text"> Bold</label>
+          <label><input type="checkbox" id="show-start-finish" checked> Start/Finish</label>
+        </div>
+        <div class="toolbar-content" data-tab="edges">
+          <label>Arrowhead <select id="arrowhead-pos">
+            <option value="end" selected>At End</option>
+            <option value="mid">Midway</option>
+          </select></label>
+          <label><input type="checkbox" id="auto-curves" checked> Auto Curves</label>
+        </div>
       </div>
     </div>
   </div>
@@ -271,6 +348,11 @@ function getShowWeighting() { return document.getElementById('show-weighting').c
 function getShowNumbers() { return document.getElementById('show-numbers').checked; }
 function getNodeShape() { return document.getElementById('node-shape').value; }
 function getAutoCurves() { return document.getElementById('auto-curves').checked; }
+function getLabelStyle() { return document.getElementById('label-style').value; }
+function getItalicNames() { return document.getElementById('italic-names').checked; }
+function getArrowheadPos() { return document.getElementById('arrowhead-pos').value; }
+function getShowStartFinish() { return document.getElementById('show-start-finish').checked; }
+function getBoldText() { return document.getElementById('bold-text').checked; }
 function getNodeHalfW(nodeR) { const s = getNodeShape(); return s === 'split' ? nodeR * 1.5 : nodeR; }
 
 // ---- FILE PARSING ----
@@ -372,7 +454,8 @@ function generateGraph(activities, preserveCustoms) {
           curve: a.curve, color: a.color, lineWidth: a.lineWidth,
           dash: [...a.dash], labelDx: a.labelDx, labelDy: a.labelDy,
           durDx: a.durDx, durDy: a.durDy,
-          startAngle: a.startAngle, endAngle: a.endAngle
+          startAngle: a.startAngle, endAngle: a.endAngle,
+          hidden: a.hidden
         };
       }
     });
@@ -433,8 +516,34 @@ function applyTable() {
   const activities = readTable();
   if (!activities.length) { showToast('Add at least one task', true); return; }
   generateGraph(activities, true);
+  updateHiddenList();
   draw();
   showToast(`Applied ${activities.length} activities`);
+}
+
+function updateHiddenList() {
+  const list = document.getElementById('hidden-edges-list');
+  const section = document.getElementById('hidden-edges-section');
+  const hidden = arrows.filter(a => a.hidden);
+  if (hidden.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  list.innerHTML = '';
+  hidden.forEach((a, idx) => {
+    const name = a.isDummy ? `Dummy (${a.from}→${a.to})` : `${a.label} (${a.from}→${a.to})`;
+    const item = document.createElement('div');
+    item.className = 'hidden-edge-item';
+    item.innerHTML = `<span>${name}</span><button onclick="showEdge(${arrows.indexOf(a)})">Show</button>`;
+    list.appendChild(item);
+  });
+}
+
+function showEdge(idx) {
+  arrows[idx].hidden = false;
+  updateHiddenList();
+  draw();
 }
 
 function toggleTablePanel() {
@@ -552,7 +661,7 @@ function buildAOA(activities) {
   activities.forEach(a => {
     arrows.push({
       from: actStart[a.id], to: actEnd[a.id], label: a.id, weighting: a.weighting,
-      isDummy: false, curve: 0, color: '#1e293b', lineWidth: 2, dash: [],
+      isDummy: false, hidden: false, curve: 0, color: '#1e293b', lineWidth: 2, dash: [],
       labelDx: 0, labelDy: 0, durDx: 0, durDy: 0,
       startAngle: null, endAngle: null
     });
@@ -560,7 +669,7 @@ function buildAOA(activities) {
   dummies.forEach(d => {
     arrows.push({
       from: d.from, to: d.to, label: '', weighting: 0,
-      isDummy: true, curve: 0, color: '#1e293b', lineWidth: 2, dash: [6, 4],
+      isDummy: true, hidden: false, curve: 0, color: '#1e293b', lineWidth: 2, dash: [6, 4],
       startAngle: null, endAngle: null
     });
   });
@@ -696,7 +805,8 @@ function getPerimeterPoint(ev, angle, nodeR) {
     const hw = nodeR * 1.5, hh = nodeR;
     return { x: ev.x + hw * Math.cos(angle), y: ev.y + hh * Math.sin(angle) };
   } else {
-    return { x: ev.x + nodeR * Math.cos(angle), y: ev.y + nodeR * Math.sin(angle) };
+    const r = getShowNumbers() ? nodeR : nodeR * 0.55;
+    return { x: ev.x + r * Math.cos(angle), y: ev.y + r * Math.sin(angle) };
   }
 }
 
@@ -744,7 +854,8 @@ function getEdgeGeom(a, evMap, nodeR) {
   const cpx = midCX + perpX * (a.curve + autoCurveOffset), cpy = midCY + perpY * (a.curve + autoCurveOffset);
 
   const aLen = 8 + a.lineWidth * 2;
-  const aHeight = aLen * Math.cos(Math.PI/6);
+  const arrowAtEnd = getArrowheadPos() !== 'mid';
+  const aHeight = arrowAtEnd ? aLen * Math.cos(Math.PI/6) : 0;
 
   let sx, sy, ex, ey;
 
@@ -791,7 +902,7 @@ function getEdgeGeom(a, evMap, nodeR) {
   }
 
   const mx = (sx+ex)/2, my = (sy+ey)/2;
-  return { sx, sy, ex, ey, mx, my, cpx, cpy, ux, uy, perpX, perpY, dist, aLen, isCurved };
+  return { sx, sy, ex, ey, mx, my, cpx, cpy, ux, uy, perpX, perpY, dist, aLen, aHeight, isCurved };
 }
 
 function getLabelBasePos(a, evMap, nodeR) {
@@ -822,6 +933,26 @@ function getLabelBasePos(a, evMap, nodeR) {
   return { mx, my, upX, upY };
 }
 
+function getEdgeMidInfo(a, g) {
+  const cps = getAutoCurveCPs(a, g);
+  let mx, my, tx, ty;
+  if (cps) {
+    const t = 0.5, t1 = 0.5;
+    mx = t1*t1*t1*g.sx + 3*t1*t1*t*cps.cp1x + 3*t1*t*t*cps.cp2x + t*t*t*g.ex;
+    my = t1*t1*t1*g.sy + 3*t1*t1*t*cps.cp1y + 3*t1*t*t*cps.cp2y + t*t*t*g.ey;
+    tx = 3*t1*t1*(cps.cp1x-g.sx) + 6*t1*t*(cps.cp2x-cps.cp1x) + 3*t*t*(g.ex-cps.cp2x);
+    ty = 3*t1*t1*(cps.cp1y-g.sy) + 6*t1*t*(cps.cp2y-cps.cp1y) + 3*t*t*(g.ey-cps.cp2y);
+  } else if (g.isCurved) {
+    mx = 0.25*g.sx + 0.5*g.cpx + 0.25*g.ex;
+    my = 0.25*g.sy + 0.5*g.cpy + 0.25*g.ey;
+    tx = g.ex - g.sx; ty = g.ey - g.sy;
+  } else {
+    mx = (g.sx + g.ex)/2; my = (g.sy + g.ey)/2;
+    tx = g.ex - g.sx; ty = g.ey - g.sy;
+  }
+  return { x: mx, y: my, angle: Math.atan2(ty, tx) };
+}
+
 function labelHitTest(mx, my) {
   const evMap = {};
   events.forEach(e => evMap[e.id] = e);
@@ -829,21 +960,38 @@ function labelHitTest(mx, my) {
   const fs = getFontSize();
   const showDur = getShowWeighting();
   const lOff = fs * 0.8;
-  ctx.font = `bold ${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+  const combined = getLabelStyle() === 'combined';
+  const italic = getItalicNames();
+  const normalFont = `${getBoldText()?'bold ':''}${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+  const nameFont = italic ? `${getBoldText()?'bold ':''}italic ${fs}px -apple-system, BlinkMacSystemFont, sans-serif` : normalFont;
   for (let i = arrows.length-1; i >= 0; i--) {
     const a = arrows[i];
-    if (a.isDummy) continue;
+    if (a.isDummy || a.hidden) continue;
     const pos = getLabelBasePos(a, evMap, nodeR);
     if (!pos) continue;
-    // Name label (above)
-    const nx = pos.mx + pos.upX*lOff + a.labelDx, ny = pos.my + pos.upY*lOff + a.labelDy;
-    const ntw = ctx.measureText(a.label).width;
-    if (mx >= nx-ntw/2-5 && mx <= nx+ntw/2+5 && my >= ny-fs/2-4 && my <= ny+fs/2+4) return { arrow: a, type: 'name' };
-    // Duration label (below)
-    if (showDur && a.weighting) {
-      const dx = pos.mx - pos.upX*lOff + (a.durDx||0), dy = pos.my - pos.upY*lOff + (a.durDy||0);
-      const dtw = ctx.measureText(String(a.weighting)).width;
-      if (mx >= dx-dtw/2-5 && mx <= dx+dtw/2+5 && my >= dy-fs/2-4 && my <= dy+fs/2+4) return { arrow: a, type: 'dur' };
+    if (combined) {
+      const nx = pos.mx + pos.upX*lOff + a.labelDx, ny = pos.my + pos.upY*lOff + a.labelDy;
+      const hasW = showDur && a.weighting;
+      let tw;
+      if (italic && hasW) {
+        ctx.font = nameFont; tw = ctx.measureText(a.label).width;
+        ctx.font = normalFont; tw += ctx.measureText(', ' + a.weighting).width;
+      } else {
+        ctx.font = italic ? nameFont : normalFont;
+        tw = ctx.measureText(hasW ? a.label + ', ' + a.weighting : a.label).width;
+      }
+      if (mx >= nx-tw/2-5 && mx <= nx+tw/2+5 && my >= ny-fs/2-4 && my <= ny+fs/2+4) return { arrow: a, type: 'name' };
+    } else {
+      ctx.font = nameFont;
+      const nx = pos.mx + pos.upX*lOff + a.labelDx, ny = pos.my + pos.upY*lOff + a.labelDy;
+      const ntw = ctx.measureText(a.label).width;
+      if (mx >= nx-ntw/2-5 && mx <= nx+ntw/2+5 && my >= ny-fs/2-4 && my <= ny+fs/2+4) return { arrow: a, type: 'name' };
+      if (showDur && a.weighting) {
+        ctx.font = normalFont;
+        const dx = pos.mx - pos.upX*lOff + (a.durDx||0), dy = pos.my - pos.upY*lOff + (a.durDy||0);
+        const dtw = ctx.measureText(String(a.weighting)).width;
+        if (mx >= dx-dtw/2-5 && mx <= dx+dtw/2+5 && my >= dy-fs/2-4 && my <= dy+fs/2+4) return { arrow: a, type: 'dur' };
+      }
     }
   }
   return null;
@@ -859,11 +1007,13 @@ function drawNetwork(c, ox, oy, exporting) {
   const fs = getFontSize();
   const showDur = getShowWeighting();
   const showNums = getShowNumbers();
+  const arrowMid = getArrowheadPos() === 'mid';
   const evMap = {};
   events.forEach(e => evMap[e.id] = e);
 
   // Arrows
   arrows.forEach(a => {
+    if (a.hidden) return;
     const g = getEdgeGeom(a, evMap, nodeR);
     if (!g) return;
 
@@ -893,32 +1043,58 @@ function drawNetwork(c, ox, oy, exporting) {
     c.stroke();
     c.setLineDash([]);
 
-    // Labels: task name above edge, duration below
+    // Labels
     if (!a.isDummy) {
       const basePos = getLabelBasePos(a, evMap, nodeR);
       if (basePos) {
-        const lOff = fs * 0.8;
+        const lOff = fs * 0.8 + (arrowMid ? a.lineWidth * 3 + 4 : 0);
         const isLabelHovered = !exporting && hoveredLabel === a;
-        c.font = `bold ${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
-        c.textAlign = 'center'; c.textBaseline = 'middle';
+        const combined = getLabelStyle() === 'combined';
+        const italic = getItalicNames();
+        const normalFont = `${getBoldText()?'bold ':''}${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        const nameFont = italic ? `${getBoldText()?'bold ':''}italic ${fs}px -apple-system, BlinkMacSystemFont, sans-serif` : normalFont;
 
-        // Name above
-        const nx = basePos.mx + basePos.upX*lOff + a.labelDx;
-        const ny = basePos.my + basePos.upY*lOff + a.labelDy;
-        const ntw = c.measureText(a.label).width;
-        if (isLabelHovered) { c.strokeStyle = '#3b82f6'; c.lineWidth = 1; c.strokeRect(nx-ntw/2-3, ny-fs/2-2, ntw+6, fs+4); }
-        c.fillStyle = a.color;
-        c.fillText(a.label, nx, ny);
-
-        // Duration below
-        if (showDur && a.weighting) {
-          const dx = basePos.mx - basePos.upX*lOff + (a.durDx||0);
-          const dy = basePos.my - basePos.upY*lOff + (a.durDy||0);
-          const durText = String(a.weighting);
-          const dtw = c.measureText(durText).width;
-          if (isLabelHovered) { c.strokeStyle = '#3b82f6'; c.lineWidth = 1; c.strokeRect(dx-dtw/2-3, dy-fs/2-2, dtw+6, fs+4); }
-          c.fillStyle = a.color;
-          c.fillText(durText, dx, dy);
+        if (combined) {
+          const nx = basePos.mx + basePos.upX*lOff + a.labelDx;
+          const ny = basePos.my + basePos.upY*lOff + a.labelDy;
+          const hasW = showDur && a.weighting;
+          if (italic && hasW) {
+            c.font = nameFont;
+            const nameW = c.measureText(a.label).width;
+            c.font = normalFont;
+            const rest = ', ' + a.weighting;
+            const restW = c.measureText(rest).width;
+            const totalW = nameW + restW;
+            if (isLabelHovered) { c.strokeStyle = '#3b82f6'; c.lineWidth = 1; c.strokeRect(nx-totalW/2-3, ny-fs/2-2, totalW+6, fs+4); }
+            c.textAlign = 'left'; c.textBaseline = 'middle';
+            c.fillStyle = a.color;
+            c.font = nameFont; c.fillText(a.label, nx - totalW/2, ny);
+            c.font = normalFont; c.fillText(rest, nx - totalW/2 + nameW, ny);
+            c.textAlign = 'center';
+          } else {
+            c.font = italic ? nameFont : normalFont;
+            const text = hasW ? a.label + ', ' + a.weighting : a.label;
+            const tw = c.measureText(text).width;
+            if (isLabelHovered) { c.strokeStyle = '#3b82f6'; c.lineWidth = 1; c.strokeRect(nx-tw/2-3, ny-fs/2-2, tw+6, fs+4); }
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.fillStyle = a.color; c.fillText(text, nx, ny);
+          }
+        } else {
+          c.font = nameFont; c.textAlign = 'center'; c.textBaseline = 'middle';
+          const nx = basePos.mx + basePos.upX*lOff + a.labelDx;
+          const ny = basePos.my + basePos.upY*lOff + a.labelDy;
+          const ntw = c.measureText(a.label).width;
+          if (isLabelHovered) { c.strokeStyle = '#3b82f6'; c.lineWidth = 1; c.strokeRect(nx-ntw/2-3, ny-fs/2-2, ntw+6, fs+4); }
+          c.fillStyle = a.color; c.fillText(a.label, nx, ny);
+          if (showDur && a.weighting) {
+            c.font = normalFont;
+            const dx = basePos.mx - basePos.upX*lOff + (a.durDx||0);
+            const dy = basePos.my - basePos.upY*lOff + (a.durDy||0);
+            const durText = String(a.weighting);
+            const dtw = c.measureText(durText).width;
+            if (isLabelHovered) { c.strokeStyle = '#3b82f6'; c.lineWidth = 1; c.strokeRect(dx-dtw/2-3, dy-fs/2-2, dtw+6, fs+4); }
+            c.fillStyle = a.color; c.fillText(durText, dx, dy);
+          }
         }
       }
     }
@@ -943,7 +1119,7 @@ function drawNetwork(c, ox, oy, exporting) {
       c.strokeStyle = e.borderColor; c.lineWidth = 1.5; c.stroke();
       if (showNums) {
         c.fillStyle = e.borderColor;
-        c.font = `bold ${Math.max(fs-2,8)}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        c.font = `${getBoldText()?'bold ':''}${Math.max(fs-2,8)}px -apple-system, BlinkMacSystemFont, sans-serif`;
         c.textAlign = 'center'; c.textBaseline = 'bottom';
         c.fillText(e.id, e.x, e.y - hh - 3);
       }
@@ -954,7 +1130,7 @@ function drawNetwork(c, ox, oy, exporting) {
         if (!exporting || e.fillColor !== '#ffffff') { c.fillStyle = e.fillColor; c.fill(); }
         c.strokeStyle = strokeColor; c.lineWidth = isSel ? 3 : 2.5; c.stroke();
         c.fillStyle = e.borderColor;
-        c.font = `bold ${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        c.font = `${getBoldText()?'bold ':''}${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
         c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillText(e.id, e.x, e.y);
       } else {
@@ -966,47 +1142,69 @@ function drawNetwork(c, ox, oy, exporting) {
     }
   });
 
-  // Arrowheads (drawn after nodes so they aren't covered by node fill)
+  // Arrowheads
   arrows.forEach(a => {
+    if (a.hidden) return;
     const g = getEdgeGeom(a, evMap, nodeR);
     if (!g) return;
     const fe = evMap[a.from], te = evMap[a.to];
     if (!te) return;
     const aLen = g.aLen, aAng = Math.PI/6;
-    const aHeight = aLen * Math.cos(aAng);
 
-    // Determine the inward angle at the target (direction arrowhead points)
-    let inAngle;
-    if (a.endAngle != null) {
-      inAngle = a.endAngle;
-    } else if (g.isCurved) {
-      inAngle = Math.atan2(g.cpy - te.y, g.cpx - te.x);
+    if (arrowMid) {
+      const mid = getEdgeMidInfo(a, g);
+      const back = mid.angle + Math.PI;
+      c.beginPath();
+      c.moveTo(mid.x, mid.y);
+      c.lineTo(mid.x + aLen*Math.cos(back - aAng), mid.y + aLen*Math.sin(back - aAng));
+      c.lineTo(mid.x + aLen*Math.cos(back + aAng), mid.y + aLen*Math.sin(back + aAng));
+      c.closePath();
+      c.fillStyle = a.color; c.fill();
     } else {
-      const inEdges = arrows.filter(e => e.to === a.to);
-      inEdges.sort((x, y) => (evMap[x.from]?.y || 0) - (evMap[y.from]?.y || 0));
-      const inIdx = inEdges.indexOf(a);
-      const inAngOffset = inEdges.length > 1
-        ? (inIdx - (inEdges.length-1)/2) * (0.3 / Math.max(inEdges.length-1, 1)) : 0;
-      inAngle = Math.atan2(fe.y - te.y, fe.x - te.x) + inAngOffset;
+      let inAngle;
+      if (a.endAngle != null) {
+        inAngle = a.endAngle;
+      } else if (g.isCurved) {
+        inAngle = Math.atan2(g.cpy - te.y, g.cpx - te.x);
+      } else {
+        const inEdges = arrows.filter(e => e.to === a.to);
+        inEdges.sort((x, y) => (evMap[x.from]?.y || 0) - (evMap[y.from]?.y || 0));
+        const inIdx = inEdges.indexOf(a);
+        const inAngOffset = inEdges.length > 1
+          ? (inIdx - (inEdges.length-1)/2) * (0.3 / Math.max(inEdges.length-1, 1)) : 0;
+        inAngle = Math.atan2(fe.y - te.y, fe.x - te.x) + inAngOffset;
+      }
+      const ep = getPerimeterPoint(te, inAngle, nodeR);
+      const tipX = ep.x, tipY = ep.y;
+      c.beginPath();
+      c.moveTo(tipX, tipY);
+      c.lineTo(tipX + aLen*Math.cos(inAngle - aAng), tipY + aLen*Math.sin(inAngle - aAng));
+      c.lineTo(tipX + aLen*Math.cos(inAngle + aAng), tipY + aLen*Math.sin(inAngle + aAng));
+      c.closePath();
+      c.fillStyle = a.color; c.fill();
     }
-
-    const ep = getPerimeterPoint(te, inAngle, nodeR);
-    const tipX = ep.x, tipY = ep.y;
-    c.beginPath();
-    c.moveTo(tipX, tipY);
-    c.lineTo(tipX + aLen*Math.cos(inAngle - aAng), tipY + aLen*Math.sin(inAngle - aAng));
-    c.lineTo(tipX + aLen*Math.cos(inAngle + aAng), tipY + aLen*Math.sin(inAngle + aAng));
-    c.closePath();
-    c.fillStyle = a.color;
-    c.fill();
   });
+
+  // Start/Finish labels
+  if (getShowStartFinish() && events.length >= 2) {
+    const startEv = events[0];
+    const endEv = events[events.length - 1];
+    const sfR = shape === 'split' ? nodeR * 1.5 : (showNums ? nodeR : nodeR * 0.55);
+    c.font = `${getBoldText()?'bold ':''}${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    c.textBaseline = 'middle'; c.fillStyle = '#1e293b';
+    c.textAlign = 'right';
+    c.fillText('start', startEv.x - sfR - 8, startEv.y);
+    c.textAlign = 'left';
+    c.fillText('finish', endEv.x + sfR + 8, endEv.y);
+    c.textAlign = 'center';
+  }
 
   // Endpoint handles (only in interactive mode)
   if (!exporting && hoveredEndpoint) {
     const a = hoveredEndpoint.arrow;
     const g = getEdgeGeom(a, evMap, nodeR);
     if (g) {
-      const aHeight = g.aLen * Math.cos(Math.PI/6);
+      const aHeight = g.aHeight;
       let hx, hy;
       if (hoveredEndpoint.end === 'start') {
         hx = g.sx; hy = g.sy;
@@ -1126,6 +1324,7 @@ function edgeHitTest(mx, my) {
 
   for (let i = arrows.length-1; i >= 0; i--) {
     const a = arrows[i];
+    if (a.hidden) continue;
     const g = getEdgeGeom(a, evMap, nodeR);
     if (!g) continue;
     const cps = getAutoCurveCPs(a, g);
@@ -1156,6 +1355,7 @@ function endpointHitTest(mx, my) {
   const threshold = 10;
   for (let i = arrows.length-1; i >= 0; i--) {
     const a = arrows[i];
+    if (a.hidden) continue;
     const g = getEdgeGeom(a, evMap, nodeR);
     if (!g) continue;
     // Check start point
@@ -1167,7 +1367,7 @@ function endpointHitTest(mx, my) {
       const ep = getPerimeterPoint(te, a.endAngle, nodeR);
       tipX = ep.x; tipY = ep.y;
     } else {
-      const aHeight = g.aLen * Math.cos(Math.PI/6);
+      const aHeight = g.aHeight;
       let ang;
       if (a.curve !== 0) ang = Math.atan2(g.ey - g.cpy, g.ex - g.cpx);
       else ang = Math.atan2(g.ey - g.sy, g.ex - g.sx);
@@ -1373,7 +1573,8 @@ function showEdgePanel(arrow) {
         <button class="style-btn${dashIdx===2?' active':''}" data-dash="2,4" style="flex:1;">Dot</button>
       </div>
     </div>
-    <div class="opt-row"><button class="style-btn" id="opt-reset-anchors" ${hasCustomAnchors?'':'disabled'} style="width:100%">Reset Anchors</button></div>`;
+    <div class="opt-row"><button class="style-btn" id="opt-reset-anchors" ${hasCustomAnchors?'':'disabled'} style="width:100%">Reset Anchors</button></div>
+    <div class="opt-row"><button class="style-btn" id="opt-hide-edge" style="width:100%;color:#ef4444;border-color:#fca5a5;">Hide Edge</button></div>`;
 
   const evMap = {};
   events.forEach(e => evMap[e.id] = e);
@@ -1418,6 +1619,12 @@ function showEdgePanel(arrow) {
     document.getElementById('opt-reset-anchors').disabled = true;
     draw();
   });
+  document.getElementById('opt-hide-edge').addEventListener('click', () => {
+    arrow.hidden = true;
+    deselect();
+    updateHiddenList();
+    draw();
+  });
 }
 
 function showNodePanel(ev) {
@@ -1433,7 +1640,50 @@ function showNodePanel(ev) {
   document.getElementById('opt-border').addEventListener('input', e => { ev.borderColor = e.target.value; draw(); });
 }
 
+function applyPreset(preset) {
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.preset-btn[onclick*="${preset}"]`).classList.add('active');
+  if (preset === 'sace') {
+    document.getElementById('label-style').value = 'split';
+    document.getElementById('italic-names').checked = false;
+    document.getElementById('arrowhead-pos').value = 'end';
+    document.getElementById('node-shape').value = 'split';
+    document.getElementById('show-numbers').checked = false;
+    document.getElementById('show-start-finish').checked = true;
+    document.getElementById('bold-text').checked = false;
+    document.getElementById('node-size').value = 50;
+    document.getElementById('node-size-num').value = 50;
+    document.getElementById('auto-curves').checked = true;
+  } else if (preset === 'vce') {
+    document.getElementById('label-style').value = 'combined';
+    document.getElementById('italic-names').checked = true;
+    document.getElementById('arrowhead-pos').value = 'mid';
+    document.getElementById('node-shape').value = 'circle';
+    document.getElementById('show-numbers').checked = false;
+    document.getElementById('show-start-finish').checked = true;
+    document.getElementById('bold-text').checked = false;
+    document.getElementById('node-size').value = 20;
+    document.getElementById('node-size-num').value = 20;
+    document.getElementById('auto-curves').checked = false;
+  }
+  draw();
+}
+
 // ---- CONTROLS ----
+
+document.querySelectorAll('.toolbar-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const target = tab.dataset.tab;
+    const content = document.querySelector(`.toolbar-content[data-tab="${target}"]`);
+    const wasOpen = content.classList.contains('open');
+    document.querySelectorAll('.toolbar-content').forEach(c => c.classList.remove('open'));
+    document.querySelectorAll('.toolbar-tab').forEach(t => t.classList.remove('active'));
+    if (!wasOpen) {
+      content.classList.add('open');
+      tab.classList.add('active');
+    }
+  });
+});
 
 document.getElementById('node-size').addEventListener('input', e => {
   document.getElementById('node-size-num').value = e.target.value; draw();
@@ -1453,6 +1703,11 @@ document.getElementById('show-weighting').addEventListener('change', draw);
 document.getElementById('show-numbers').addEventListener('change', draw);
 document.getElementById('node-shape').addEventListener('change', draw);
 document.getElementById('auto-curves').addEventListener('change', draw);
+document.getElementById('label-style').addEventListener('change', draw);
+document.getElementById('italic-names').addEventListener('change', draw);
+document.getElementById('arrowhead-pos').addEventListener('change', draw);
+document.getElementById('show-start-finish').addEventListener('change', draw);
+document.getElementById('bold-text').addEventListener('change', draw);
 
 // ---- FILE HANDLING ----
 
@@ -1480,15 +1735,21 @@ function exportPNG() {
   const lOff = fs * 0.8;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   events.forEach(e => {
-    const ex = shape === 'split' ? nodeR*1.5+4 : nodeR+4;
-    const ey = nodeR+4;
+    const showNums = getShowNumbers();
+    const ex = shape === 'split' ? nodeR*1.5+4 : (showNums ? nodeR+4 : nodeR*0.55+4);
+    const ey = shape === 'split' ? nodeR+4 : (showNums ? nodeR+4 : nodeR*0.55+4);
     minX = Math.min(minX, e.x - ex);
     minY = Math.min(minY, e.y - ey - (shape==='split'&&getShowNumbers() ? fs : 0));
     maxX = Math.max(maxX, e.x + ex);
     maxY = Math.max(maxY, e.y + ey);
   });
-  ctx.font = `bold ${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+  const expCombined = getLabelStyle() === 'combined';
+  const expItalic = getItalicNames();
+  const expNormalFont = `${getBoldText()?'bold ':''}${fs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+  const expNameFont = expItalic ? `${getBoldText()?'bold ':''}italic ${fs}px -apple-system, BlinkMacSystemFont, sans-serif` : expNormalFont;
+  ctx.font = expNormalFont;
   arrows.forEach(a => {
+    if (a.hidden) return;
     if (a.curve !== 0) {
       const g = getEdgeGeom(a, evMap, nodeR);
       if (g) {
@@ -1499,21 +1760,47 @@ function exportPNG() {
     if (!a.isDummy) {
       const base = getLabelBasePos(a, evMap, nodeR);
       if (base) {
-        // Name label (above)
-        const nx = base.mx + base.upX*lOff + a.labelDx, ny = base.my + base.upY*lOff + a.labelDy;
-        const ntw = ctx.measureText(a.label).width;
-        minX = Math.min(minX, nx-ntw/2-5); minY = Math.min(minY, ny-fs/2-4);
-        maxX = Math.max(maxX, nx+ntw/2+5); maxY = Math.max(maxY, ny+fs/2+4);
-        // Duration label (below)
-        if (showDur && a.weighting) {
-          const dx = base.mx - base.upX*lOff + (a.durDx||0), dy = base.my - base.upY*lOff + (a.durDy||0);
-          const dtw = ctx.measureText(String(a.weighting)).width;
-          minX = Math.min(minX, dx-dtw/2-5); minY = Math.min(minY, dy-fs/2-4);
-          maxX = Math.max(maxX, dx+dtw/2+5); maxY = Math.max(maxY, dy+fs/2+4);
+        if (expCombined) {
+          const nx = base.mx + base.upX*lOff + a.labelDx, ny = base.my + base.upY*lOff + a.labelDy;
+          const hasW = showDur && a.weighting;
+          let tw;
+          if (expItalic && hasW) {
+            ctx.font = expNameFont; tw = ctx.measureText(a.label).width;
+            ctx.font = expNormalFont; tw += ctx.measureText(', ' + a.weighting).width;
+          } else {
+            ctx.font = expItalic ? expNameFont : expNormalFont;
+            tw = ctx.measureText(hasW ? a.label + ', ' + a.weighting : a.label).width;
+          }
+          minX = Math.min(minX, nx-tw/2-5); minY = Math.min(minY, ny-fs/2-4);
+          maxX = Math.max(maxX, nx+tw/2+5); maxY = Math.max(maxY, ny+fs/2+4);
+        } else {
+          ctx.font = expNameFont;
+          const nx = base.mx + base.upX*lOff + a.labelDx, ny = base.my + base.upY*lOff + a.labelDy;
+          const ntw = ctx.measureText(a.label).width;
+          minX = Math.min(minX, nx-ntw/2-5); minY = Math.min(minY, ny-fs/2-4);
+          maxX = Math.max(maxX, nx+ntw/2+5); maxY = Math.max(maxY, ny+fs/2+4);
+          if (showDur && a.weighting) {
+            ctx.font = expNormalFont;
+            const dx = base.mx - base.upX*lOff + (a.durDx||0), dy = base.my - base.upY*lOff + (a.durDy||0);
+            const dtw = ctx.measureText(String(a.weighting)).width;
+            minX = Math.min(minX, dx-dtw/2-5); minY = Math.min(minY, dy-fs/2-4);
+            maxX = Math.max(maxX, dx+dtw/2+5); maxY = Math.max(maxY, dy+fs/2+4);
+          }
         }
       }
     }
   });
+
+  // Start/Finish label bounds
+  if (getShowStartFinish() && events.length >= 2) {
+    const startEv = events[0], endEv = events[events.length - 1];
+    const sfR = shape === 'split' ? nodeR * 1.5 : (getShowNumbers() ? nodeR : nodeR * 0.55);
+    ctx.font = expNormalFont;
+    const stW = ctx.measureText('start').width;
+    const fnW = ctx.measureText('finish').width;
+    minX = Math.min(minX, startEv.x - sfR - 8 - stW);
+    maxX = Math.max(maxX, endEv.x + sfR + 8 + fnW);
+  }
 
   // 2mm margin at 96 DPI ≈ 7.6px, round to 8
   const pad = 8;
@@ -1537,6 +1824,7 @@ function exportPNG() {
 function showGraph() {
   document.getElementById('upload-screen').style.display = 'none';
   document.getElementById('graph-screen').style.display = 'flex';
+  document.getElementById('preset-panel').style.display = 'flex';
   document.getElementById('table-panel').classList.add('open');
   document.getElementById('reset-btn').disabled = false;
   document.getElementById('export-btn').disabled = false;
@@ -1548,6 +1836,7 @@ function resetApp() {
   deselect();
   document.getElementById('upload-screen').style.display = '';
   document.getElementById('graph-screen').style.display = 'none';
+  document.getElementById('preset-panel').style.display = 'none';
   document.getElementById('reset-btn').disabled = true;
   document.getElementById('export-btn').disabled = true;
   document.getElementById('file-input').value = '';
