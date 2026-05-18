@@ -198,6 +198,18 @@
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     .error-toast { background: #ef4444 !important; }
+
+    .cpa-legend {
+      position: absolute; top: 48px; right: 12px; z-index: 40;
+      background: #ffffffee; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 10px 14px; display: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06); font-size: 0.78rem; color: #475569;
+      max-width: 280px;
+    }
+    .cpa-legend-title { font-weight: 600; color: #0f172a; margin-bottom: 6px; font-size: 0.82rem; }
+    .cpa-legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; line-height: 1.4; }
+    .cpa-legend-swatch { width: 20px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+    .cpa-legend-duration { font-weight: 600; color: #0f172a; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
@@ -263,7 +275,10 @@ D,1,C</pre>
         <span>Preset</span>
         <button class="preset-btn active" onclick="applyPreset('sace')">SACE</button>
         <button class="preset-btn" onclick="applyPreset('vce')">VCE</button>
+        <span style="border-left:1px solid #cbd5e1;height:18px;margin:0 2px;"></span>
+        <button class="preset-btn" id="cpa-toggle" onclick="toggleCPA()">Critical Path</button>
       </div>
+      <div id="cpa-legend" class="cpa-legend"></div>
       <div id="options-panel" class="options-panel"></div>
       <div class="toolbar">
         <div class="toolbar-tabs">
@@ -331,6 +346,8 @@ let draggingLabelType = null;
 let draggingEndpoint = null; // { arrow, end: 'start'|'end' }
 let didDrag = false;
 let snapLines = [];
+let cpaEnabled = false;
+let cpaData = null;
 
 function resizeCanvas() {
   const rect = canvas.parentElement.getBoundingClientRect();
@@ -469,6 +486,7 @@ function generateGraph(activities, preserveCustoms) {
     });
   }
   autoLayout();
+  if (cpaEnabled) computeCPA();
 }
 
 // ---- TABLE EDITOR ----
@@ -546,10 +564,7 @@ function showEdge(idx) {
   draw();
 }
 
-function toggleTablePanel() {
-  document.getElementById('table-panel').classList.toggle('open');
-  setTimeout(resizeCanvas, 20);
-}
+
 
 function startManualEntry() {
   events = []; arrows = [];
@@ -797,6 +812,138 @@ function autoLayout() {
   draw();
 }
 
+// ---- CRITICAL PATH ANALYSIS ----
+
+const CPA_COLORS = ['#dc2626','#2563eb','#16a34a','#d97706','#9333ea','#0891b2','#e11d48','#65a30d'];
+
+function computeCPA() {
+  cpaData = null;
+  if (!events.length || !arrows.length) return;
+
+  const hasWeighting = arrows.some(a => !a.isDummy && a.weighting > 0);
+  if (!hasWeighting) {
+    showToast('Add weighting/duration data for Critical Path Analysis', true);
+    cpaEnabled = false;
+    document.getElementById('cpa-toggle').classList.remove('active');
+    return;
+  }
+
+  const est = {};
+  events.forEach(e => est[e.id] = 0);
+  for (const e of events) {
+    arrows.forEach(a => {
+      if (a.to === e.id && !a.hidden) {
+        const eft = est[a.from] + (a.weighting || 0);
+        if (eft > est[e.id]) est[e.id] = eft;
+      }
+    });
+  }
+
+  const endId = events[events.length - 1].id;
+  const projectDuration = est[endId];
+  const lst = {};
+  events.forEach(e => lst[e.id] = projectDuration);
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    arrows.forEach(a => {
+      if (a.from === e.id && !a.hidden) {
+        const late = lst[a.to] - (a.weighting || 0);
+        if (late < lst[e.id]) lst[e.id] = late;
+      }
+    });
+  }
+
+  const criticalEdgeSet = new Set();
+  arrows.forEach((a, idx) => {
+    if (a.hidden) return;
+    const tf = lst[a.to] - est[a.from] - (a.weighting || 0);
+    if (Math.abs(tf) < 1e-9) criticalEdgeSet.add(idx);
+  });
+
+  const adjCrit = {};
+  criticalEdgeSet.forEach(idx => {
+    const a = arrows[idx];
+    if (!adjCrit[a.from]) adjCrit[a.from] = [];
+    adjCrit[a.from].push({ to: a.to, idx });
+  });
+
+  const startId = events[0].id;
+  const criticalPaths = [];
+  const MAX_PATHS = 20;
+  (function dfs(node, path) {
+    if (criticalPaths.length >= MAX_PATHS) return;
+    if (node === endId) { criticalPaths.push([...path]); return; }
+    const neighbors = adjCrit[node] || [];
+    for (const { to, idx } of neighbors) {
+      path.push(idx);
+      dfs(to, path);
+      path.pop();
+    }
+  })(startId, []);
+
+  const edgePathMap = {};
+  criticalPaths.forEach((path, pi) => {
+    path.forEach(ei => {
+      if (!edgePathMap[ei]) edgePathMap[ei] = [];
+      if (!edgePathMap[ei].includes(pi)) edgePathMap[ei].push(pi);
+    });
+  });
+
+  const eventPathMap = {};
+  criticalPaths.forEach((path, pi) => {
+    path.forEach(ei => {
+      const a = arrows[ei];
+      [a.from, a.to].forEach(eid => {
+        if (!eventPathMap[eid]) eventPathMap[eid] = [];
+        if (!eventPathMap[eid].includes(pi)) eventPathMap[eid].push(pi);
+      });
+    });
+  });
+
+  cpaData = { est, lst, projectDuration, criticalPaths, edgePathMap, eventPathMap, pathColors: CPA_COLORS };
+  updateCPALegend();
+}
+
+function getCPAEdgeStyle(a, idx) {
+  if (!cpaData) return null;
+  const pis = cpaData.edgePathMap[idx];
+  if (pis && pis.length > 0) {
+    if (pis.length === 1) {
+      return { color: cpaData.pathColors[pis[0] % cpaData.pathColors.length], lineWidth: Math.max(a.lineWidth, 2.5), isCritical: true, pathIndices: pis };
+    }
+    return { gradient: true, lineWidth: Math.max(a.lineWidth, 3), isCritical: true, pathIndices: pis };
+  }
+  return { color: '#d1d5db', lineWidth: Math.max(1, a.lineWidth * 0.7), isCritical: false };
+}
+
+function toggleCPA() {
+  cpaEnabled = !cpaEnabled;
+  document.getElementById('cpa-toggle').classList.toggle('active', cpaEnabled);
+  if (cpaEnabled) computeCPA();
+  else {
+    cpaData = null;
+    document.getElementById('cpa-legend').style.display = 'none';
+  }
+  draw();
+}
+
+function updateCPALegend() {
+  const legend = document.getElementById('cpa-legend');
+  if (!cpaData || cpaData.criticalPaths.length === 0) {
+    legend.style.display = 'none';
+    return;
+  }
+  legend.style.display = 'block';
+  let html = '<div class="cpa-legend-title">Critical Path' + (cpaData.criticalPaths.length > 1 ? 's' : '') + '</div>';
+  cpaData.criticalPaths.forEach((path, pi) => {
+    const color = cpaData.pathColors[pi % cpaData.pathColors.length];
+    const labels = path.map(ei => arrows[ei].label).filter(Boolean);
+    html += `<div class="cpa-legend-item"><span class="cpa-legend-swatch" style="background:${color}"></span><span>${labels.join(' → ')}</span></div>`;
+  });
+  html += `<div class="cpa-legend-duration">Duration: ${cpaData.projectDuration}</div>`;
+  legend.innerHTML = html;
+}
+
 // ---- EDGE GEOMETRY ----
 
 function getPerimeterPoint(ev, angle, nodeR) {
@@ -816,19 +963,13 @@ function getEdgeGeom(a, evMap, nodeR) {
 
   const halfW = getNodeHalfW(nodeR);
 
-  // Fan multiple edges vertically at shared source/target
   const outEdges = arrows.filter(e => e.from === a.from);
   outEdges.sort((x, y) => (evMap[x.to]?.y || 0) - (evMap[y.to]?.y || 0));
   const outIdx = outEdges.indexOf(a);
-  const fanMax = nodeR * 0.6;
-  const outOffset = outEdges.length > 1
-    ? (outIdx - (outEdges.length-1)/2) * (2*fanMax/(outEdges.length-1)) : 0;
 
   const inEdges = arrows.filter(e => e.to === a.to);
   inEdges.sort((x, y) => (evMap[x.from]?.y || 0) - (evMap[y.from]?.y || 0));
   const inIdx = inEdges.indexOf(a);
-  const inOffset = inEdges.length > 1
-    ? (inIdx - (inEdges.length-1)/2) * (2*fanMax/(inEdges.length-1)) : 0;
 
   const dx = te.x - fe.x, dy = te.y - fe.y;
   const dist = Math.sqrt(dx*dx + dy*dy);
@@ -843,10 +984,26 @@ function getEdgeGeom(a, evMap, nodeR) {
   let autoCurveOffset = 0;
   if (parallel.length > 1) {
     const pIdx = parallel.indexOf(a);
-    const spacing = 60;
+    const spacing = 120;
     autoCurveOffset = (pIdx - (parallel.length-1)/2) * spacing;
     // Flip sign for reversed edges so they spread the other way
     if (a.from > a.to) autoCurveOffset = -autoCurveOffset;
+  }
+
+  // Spread edges sharing a source node
+  const sameSource = arrows.filter(e => e.from === a.from && !e.hidden);
+  if (sameSource.length > 1) {
+    sameSource.sort((x, y) => (evMap[x.to]?.y || 0) - (evMap[y.to]?.y || 0));
+    const ssIdx = sameSource.indexOf(a);
+    autoCurveOffset += (ssIdx - (sameSource.length-1)/2) * 15;
+  }
+
+  // Spread edges sharing a target node
+  const sameTarget = arrows.filter(e => e.to === a.to && !e.hidden);
+  if (sameTarget.length > 1) {
+    sameTarget.sort((x, y) => (evMap[x.from]?.y || 0) - (evMap[y.from]?.y || 0));
+    const stIdx = sameTarget.indexOf(a);
+    autoCurveOffset += (stIdx - (sameTarget.length-1)/2) * 15;
   }
 
   // Control point based on node center midpoint
@@ -863,12 +1020,14 @@ function getEdgeGeom(a, evMap, nodeR) {
   const baseAngleOut = Math.atan2(te.y - fe.y, te.x - fe.x);
   const baseAngleIn = Math.atan2(fe.y - te.y, fe.x - te.x);
 
-  // Angular fan offset for multiple edges sharing a node
-  const fanSpread = 0.3;
+  // Angular fan offset — guarantee minimum gap so arrowheads don't overlap
+  const minAngGap = 0.5;
+  const outSpread = Math.min(Math.PI * 0.5, Math.max(0.6, minAngGap * Math.max(outEdges.length - 1, 1)));
+  const inSpread = Math.min(Math.PI * 0.5, Math.max(0.6, minAngGap * Math.max(inEdges.length - 1, 1)));
   const outAngOffset = outEdges.length > 1
-    ? (outIdx - (outEdges.length-1)/2) * (fanSpread / Math.max(outEdges.length-1, 1)) : 0;
+    ? (outIdx - (outEdges.length-1)/2) * (outSpread / Math.max(outEdges.length-1, 1)) : 0;
   const inAngOffset = inEdges.length > 1
-    ? (inIdx - (inEdges.length-1)/2) * (fanSpread / Math.max(inEdges.length-1, 1)) : 0;
+    ? (inIdx - (inEdges.length-1)/2) * (inSpread / Math.max(inEdges.length-1, 1)) : 0;
 
   const isCurved = a.curve !== 0 || autoCurveOffset !== 0;
 
@@ -1012,10 +1171,13 @@ function drawNetwork(c, ox, oy, exporting) {
   events.forEach(e => evMap[e.id] = e);
 
   // Arrows
-  arrows.forEach(a => {
+  arrows.forEach((a, _aIdx) => {
     if (a.hidden) return;
     const g = getEdgeGeom(a, evMap, nodeR);
     if (!g) return;
+    const _cpa = cpaEnabled && cpaData ? getCPAEdgeStyle(a, _aIdx) : null;
+    const eColor = _cpa ? (_cpa.gradient ? cpaData.pathColors[_cpa.pathIndices[0] % cpaData.pathColors.length] : _cpa.color) : a.color;
+    const eWidth = _cpa ? _cpa.lineWidth : a.lineWidth;
 
     // Selection glow
     if (!exporting && a === selectedArrow) {
@@ -1037,8 +1199,16 @@ function drawNetwork(c, ox, oy, exporting) {
     // Edge line
     c.beginPath();
     drawEdgePath(c, g, a);
-    c.strokeStyle = a.color;
-    c.lineWidth = a.lineWidth;
+    if (_cpa && _cpa.gradient) {
+      const grad = c.createLinearGradient(g.sx, g.sy, g.ex, g.ey);
+      _cpa.pathIndices.forEach((pi, i) => {
+        grad.addColorStop(i / Math.max(_cpa.pathIndices.length - 1, 1), cpaData.pathColors[pi % cpaData.pathColors.length]);
+      });
+      c.strokeStyle = grad;
+    } else {
+      c.strokeStyle = eColor;
+    }
+    c.lineWidth = eWidth;
     c.setLineDash(a.dash);
     c.stroke();
     c.setLineDash([]);
@@ -1067,7 +1237,7 @@ function drawNetwork(c, ox, oy, exporting) {
             const totalW = nameW + restW;
             if (isLabelHovered) { c.strokeStyle = '#3b82f6'; c.lineWidth = 1; c.strokeRect(nx-totalW/2-3, ny-fs/2-2, totalW+6, fs+4); }
             c.textAlign = 'left'; c.textBaseline = 'middle';
-            c.fillStyle = a.color;
+            c.fillStyle = eColor;
             c.font = nameFont; c.fillText(a.label, nx - totalW/2, ny);
             c.font = normalFont; c.fillText(rest, nx - totalW/2 + nameW, ny);
             c.textAlign = 'center';
@@ -1077,7 +1247,7 @@ function drawNetwork(c, ox, oy, exporting) {
             const tw = c.measureText(text).width;
             if (isLabelHovered) { c.strokeStyle = '#3b82f6'; c.lineWidth = 1; c.strokeRect(nx-tw/2-3, ny-fs/2-2, tw+6, fs+4); }
             c.textAlign = 'center'; c.textBaseline = 'middle';
-            c.fillStyle = a.color; c.fillText(text, nx, ny);
+            c.fillStyle = eColor; c.fillText(text, nx, ny);
           }
         } else {
           c.font = nameFont; c.textAlign = 'center'; c.textBaseline = 'middle';
@@ -1085,7 +1255,7 @@ function drawNetwork(c, ox, oy, exporting) {
           const ny = basePos.my + basePos.upY*lOff + a.labelDy;
           const ntw = c.measureText(a.label).width;
           if (isLabelHovered) { c.strokeStyle = '#3b82f6'; c.lineWidth = 1; c.strokeRect(nx-ntw/2-3, ny-fs/2-2, ntw+6, fs+4); }
-          c.fillStyle = a.color; c.fillText(a.label, nx, ny);
+          c.fillStyle = eColor; c.fillText(a.label, nx, ny);
           if (showDur && a.weighting) {
             c.font = normalFont;
             const dx = basePos.mx - basePos.upX*lOff + (a.durDx||0);
@@ -1093,7 +1263,7 @@ function drawNetwork(c, ox, oy, exporting) {
             const durText = String(a.weighting);
             const dtw = c.measureText(durText).width;
             if (isLabelHovered) { c.strokeStyle = '#3b82f6'; c.lineWidth = 1; c.strokeRect(dx-dtw/2-3, dy-fs/2-2, dtw+6, fs+4); }
-            c.fillStyle = a.color; c.fillText(durText, dx, dy);
+            c.fillStyle = eColor; c.fillText(durText, dx, dy);
           }
         }
       }
@@ -1110,18 +1280,32 @@ function drawNetwork(c, ox, oy, exporting) {
 
     if (shape === 'split') {
       const hw = nodeR * 1.5 + bump, hh = nodeR + bump;
+      const isCPANode = cpaEnabled && cpaData;
+      const cpaCritical = isCPANode && Math.abs(cpaData.est[e.id] - cpaData.lst[e.id]) < 1e-9;
+      const cpaNodeColor = cpaCritical && cpaData.eventPathMap[e.id]
+        ? cpaData.pathColors[cpaData.eventPathMap[e.id][0] % cpaData.pathColors.length] : null;
       c.beginPath();
       c.ellipse(e.x, e.y, hw, hh, 0, 0, Math.PI*2);
       c.fillStyle = e.fillColor; c.fill();
-      c.strokeStyle = strokeColor; c.lineWidth = isSel ? 3 : 2.5; c.stroke();
-      // Vertical center line
+      c.strokeStyle = cpaNodeColor || strokeColor;
+      c.lineWidth = isSel ? 3 : (cpaCritical ? 3 : 2.5); c.stroke();
       c.beginPath(); c.moveTo(e.x, e.y - hh); c.lineTo(e.x, e.y + hh);
-      c.strokeStyle = e.borderColor; c.lineWidth = 1.5; c.stroke();
+      c.strokeStyle = cpaNodeColor || e.borderColor; c.lineWidth = 1.5; c.stroke();
       if (showNums) {
-        c.fillStyle = e.borderColor;
+        c.fillStyle = cpaNodeColor || e.borderColor;
         c.font = `${getBoldText()?'bold ':''}${Math.max(fs-2,8)}px -apple-system, BlinkMacSystemFont, sans-serif`;
         c.textAlign = 'center'; c.textBaseline = 'bottom';
         c.fillText(e.id, e.x, e.y - hh - 3);
+      }
+      if (isCPANode) {
+        const valFs = Math.max(Math.min(fs, Math.floor(hw * 0.55)), 9);
+        c.font = `${getBoldText()?'bold ':''}${valFs}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        c.fillStyle = cpaNodeColor || e.borderColor;
+        c.textAlign = 'center'; c.textBaseline = 'middle';
+        const estVal = Number.isInteger(cpaData.est[e.id]) ? cpaData.est[e.id] : cpaData.est[e.id].toFixed(1);
+        const lstVal = Number.isInteger(cpaData.lst[e.id]) ? cpaData.lst[e.id] : cpaData.lst[e.id].toFixed(1);
+        c.fillText(estVal, e.x - hw/2, e.y);
+        c.fillText(lstVal, e.x + hw/2, e.y);
       }
     } else {
       const drawR = nodeR + bump;
@@ -1143,10 +1327,14 @@ function drawNetwork(c, ox, oy, exporting) {
   });
 
   // Arrowheads
-  arrows.forEach(a => {
+  arrows.forEach((a, _aIdx) => {
     if (a.hidden) return;
     const g = getEdgeGeom(a, evMap, nodeR);
     if (!g) return;
+    const _cpa = cpaEnabled && cpaData ? getCPAEdgeStyle(a, _aIdx) : null;
+    const eColor = _cpa ? (_cpa.gradient
+      ? cpaData.pathColors[_cpa.pathIndices[_cpa.pathIndices.length - 1] % cpaData.pathColors.length]
+      : _cpa.color) : a.color;
     const fe = evMap[a.from], te = evMap[a.to];
     if (!te) return;
     const aLen = g.aLen, aAng = Math.PI/6;
@@ -1159,7 +1347,7 @@ function drawNetwork(c, ox, oy, exporting) {
       c.lineTo(mid.x + aLen*Math.cos(back - aAng), mid.y + aLen*Math.sin(back - aAng));
       c.lineTo(mid.x + aLen*Math.cos(back + aAng), mid.y + aLen*Math.sin(back + aAng));
       c.closePath();
-      c.fillStyle = a.color; c.fill();
+      c.fillStyle = eColor; c.fill();
     } else {
       let inAngle;
       if (a.endAngle != null) {
@@ -1170,8 +1358,9 @@ function drawNetwork(c, ox, oy, exporting) {
         const inEdges = arrows.filter(e => e.to === a.to);
         inEdges.sort((x, y) => (evMap[x.from]?.y || 0) - (evMap[y.from]?.y || 0));
         const inIdx = inEdges.indexOf(a);
+        const inArrSpread = Math.min(Math.PI * 0.5, Math.max(0.6, 0.5 * Math.max(inEdges.length - 1, 1)));
         const inAngOffset = inEdges.length > 1
-          ? (inIdx - (inEdges.length-1)/2) * (0.3 / Math.max(inEdges.length-1, 1)) : 0;
+          ? (inIdx - (inEdges.length-1)/2) * (inArrSpread / Math.max(inEdges.length-1, 1)) : 0;
         inAngle = Math.atan2(fe.y - te.y, fe.x - te.x) + inAngOffset;
       }
       const ep = getPerimeterPoint(te, inAngle, nodeR);
@@ -1181,7 +1370,7 @@ function drawNetwork(c, ox, oy, exporting) {
       c.lineTo(tipX + aLen*Math.cos(inAngle - aAng), tipY + aLen*Math.sin(inAngle - aAng));
       c.lineTo(tipX + aLen*Math.cos(inAngle + aAng), tipY + aLen*Math.sin(inAngle + aAng));
       c.closePath();
-      c.fillStyle = a.color; c.fill();
+      c.fillStyle = eColor; c.fill();
     }
   });
 
@@ -1806,7 +1995,7 @@ function exportPNG() {
   const pad = 8;
   const w = (maxX-minX)+pad*2, h = (maxY-minY)+pad*2;
   const ec = document.createElement('canvas');
-  const scale = 2;
+  const scale = 4;
   ec.width = w*scale; ec.height = h*scale;
   const ectx = ec.getContext('2d');
   ectx.scale(scale, scale);
@@ -1833,6 +2022,9 @@ function showGraph() {
 
 function resetApp() {
   events = []; arrows = []; panX = 0; panY = 0;
+  cpaEnabled = false; cpaData = null;
+  document.getElementById('cpa-toggle').classList.remove('active');
+  document.getElementById('cpa-legend').style.display = 'none';
   deselect();
   document.getElementById('upload-screen').style.display = '';
   document.getElementById('graph-screen').style.display = 'none';
