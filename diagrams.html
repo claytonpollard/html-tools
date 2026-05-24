@@ -1,0 +1,3815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Diagram Builder</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #fafafa;
+    color: #222;
+    display: flex;
+    flex-direction: column;
+  }
+  #toolbar {
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 8px 14px;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  #toolbar button {
+    padding: 5px 11px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  #toolbar button:hover { background: #f3f4f6; }
+  .hint { color: #6b7280; font-size: 12px; }
+  .hint b { color: #374151; font-weight: 600; }
+  #main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+  }
+  #left-tools {
+    width: 56px;
+    flex-shrink: 0;
+    background: #fff;
+    border-right: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 6px;
+  }
+  .tool-btn {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .tool-btn:hover { background: #f3f4f6; }
+  .tool-btn.active {
+    border-color: #2563eb;
+    background: #dbeafe;
+    box-shadow: 0 0 0 2px rgba(37,99,235,0.2);
+  }
+  .tool-btn svg { display: block; pointer-events: none; }
+  .tool-sub {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #6b7280;
+    background: #f3f4f6;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .tool-sub:hover { background: #e5e7eb; color: #111827; }
+  .tool-sub.active { background: #2563eb; color: #fff; }
+  .tool-sub.r { top: 2px; right: 2px; }
+  .tool-sub.d { bottom: 2px; right: 2px; }
+  #canvas-wrap { flex: 1; position: relative; min-height: 0; }
+  svg#canvas { width: 100%; height: 100%; display: block; cursor: crosshair; user-select: none; }
+  svg#canvas.panning { cursor: grabbing; }
+  /* Label font family (default serif, like LaTeX). Sans toggled via .font-sans on the svg. */
+  svg .vertex-label, svg .edge-label, svg .angle-label {
+    font-family: "Times New Roman", Times, Georgia, serif;
+  }
+  svg.font-sans .vertex-label, svg.font-sans .edge-label, svg.font-sans .angle-label {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+
+  /* Vertex */
+  .vertex-hit { fill: transparent; cursor: grab; }
+  .vertex-hit.dragging { cursor: grabbing; }
+  .vertex {
+    fill: #111827;
+    stroke: none;
+    pointer-events: none;
+    transition: opacity 0.08s;
+  }
+  .vertex-group.selected .vertex {
+    fill: #2563eb;
+    stroke: #1d4ed8;
+    stroke-width: 2;
+  }
+  .vertex-label {
+    font-weight: 600;
+    font-style: normal;
+    fill: #111827;
+    pointer-events: none;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    paint-order: stroke;
+    stroke: #fafafa;
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+  svg.italic-vertex .vertex-label { font-weight: normal; font-style: italic; }
+  /* Hidden vertices fade only the dot. Label stays visible. */
+  .vertex-group.hidden .vertex { opacity: 0; }
+  .vertex-group.hidden:hover .vertex,
+  .vertex-group.hidden.revealed .vertex { opacity: 0.35; }
+  /* Hidden edges fade the line + ticks/arrows, keeping the label. */
+  .edge-group.hidden .edge,
+  .edge-group.hidden .edge-mark { opacity: 0; }
+  .edge-group.hidden:hover .edge,
+  .edge-group.hidden:hover .edge-mark,
+  .edge-group.hidden.revealed .edge,
+  .edge-group.hidden.revealed .edge-mark { opacity: 0.35; }
+  /* Hidden curves fade the stroke. */
+  .curve-group.hidden .curve { opacity: 0; }
+  .curve-group.hidden:hover .curve,
+  .curve-group.hidden.revealed .curve { opacity: 0.35; }
+
+  /* Edge */
+  .edge-hit { stroke: transparent; stroke-width: 14; fill: none; cursor: pointer; pointer-events: stroke; }
+  .edge { stroke: #111827; fill: none; pointer-events: none; }
+  .edge-group.selected .edge { stroke: #2563eb; }
+  .edge-label {
+    fill: #374151;
+    pointer-events: none;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    paint-order: stroke;
+    stroke: #fafafa;
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+
+  /* Angle */
+  .angle-hit-stroke { stroke: transparent; stroke-width: 14; fill: none; cursor: pointer; pointer-events: stroke; }
+  .angle-hit-fill   { fill: transparent; stroke: transparent; stroke-width: 10; cursor: pointer; pointer-events: all; }
+  .angle { stroke: #111827; fill: none; pointer-events: none; }
+  .angle.filled { fill: #111827; }
+  .angle-group.selected .angle { stroke: #2563eb; }
+  .angle-group.selected .angle.filled { fill: #2563eb; }
+  /* Edge marks */
+  .edge-mark { stroke: #111827; fill: none; pointer-events: none; }
+  .edge-group.selected .edge-mark { stroke: #2563eb; }
+  /* Curves (circles, ellipses) */
+  .curve-hit { stroke: transparent; stroke-width: 12; fill: none; cursor: pointer; pointer-events: stroke; }
+  .curve { stroke: #111827; fill: none; pointer-events: none; }
+  .curve-group.selected .curve { stroke: #2563eb; }
+  .angle-label {
+    fill: #111827;
+    pointer-events: none;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    paint-order: stroke;
+    stroke: #fafafa;
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+
+  /* Labels (draggable wrapper) */
+  .label-group { cursor: move; }
+  .label-hit { fill: transparent; pointer-events: all; }
+  .label-tether {
+    stroke: #9ca3af;
+    stroke-width: 0.75;
+    stroke-dasharray: 2 3;
+    fill: none;
+    pointer-events: none;
+    opacity: 0.6;
+  }
+
+  .snap-guide {
+    stroke: #ef4444;
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+    pointer-events: none;
+  }
+
+  /* Context menu */
+  #ctx-menu {
+    position: absolute;
+    min-width: 260px;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    padding: 8px;
+    font-size: 13px;
+    z-index: 100;
+    display: none;
+  }
+  #ctx-menu.open { display: block; }
+  .menu-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6b7280;
+    margin: 0 4px 6px;
+  }
+  .menu-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px;
+    margin-bottom: 2px;
+  }
+  .menu-row > label { color: #374151; min-width: 50px; font-size: 12px; }
+  .menu-row input[type=text] {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 6px;
+    border: 1px solid #d1d5db;
+    border-radius: 3px;
+    font-size: 13px;
+    box-sizing: border-box;
+  }
+  .menu-row.check { cursor: pointer; }
+  .menu-row.check:hover { background: #f3f4f6; border-radius: 3px; }
+  .seg-group {
+    display: flex;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .seg-group button {
+    flex: 1;
+    padding: 5px 8px;
+    background: #fff;
+    border: none;
+    border-left: 1px solid #e5e7eb;
+    cursor: pointer;
+    font-size: 12px;
+    color: #374151;
+  }
+  .seg-group button:first-child { border-left: none; }
+  .seg-group button:hover { background: #f3f4f6; }
+  .seg-group button.active { background: #2563eb; color: #fff; }
+  .menu-sep {
+    height: 1px;
+    background: #e5e7eb;
+    margin: 6px 0;
+  }
+  .menu-action {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 8px;
+    background: none;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #374151;
+  }
+  .menu-action:hover { background: #f3f4f6; }
+  .menu-action.danger { color: #b91c1c; }
+  .menu-action.danger:hover { background: #fee2e2; }
+  .hint-line { font-size: 11px; color: #9ca3af; padding: 2px 4px 4px; }
+
+  /* Tweaks popover */
+  #toolbar { position: relative; }
+  #toolbar button.primary {
+    background: #2563eb; color: #fff; border-color: #1d4ed8;
+  }
+  #toolbar button.primary:hover { background: #1d4ed8; }
+  .popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 14px;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    padding: 12px 14px;
+    z-index: 200;
+    width: 280px;
+    display: none;
+  }
+  .popover.open { display: block; }
+  .popover h4 {
+    margin: 0 0 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6b7280;
+    font-weight: 600;
+  }
+  .popover .row { margin-bottom: 10px; }
+  .popover .row:last-child { margin-bottom: 0; }
+  .popover .row-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #374151;
+    margin-bottom: 4px;
+  }
+  .popover .row-label .value { color: #6b7280; font-variant-numeric: tabular-nums; }
+  .popover input[type=range] { width: 100%; }
+  .popover .check-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+  }
+  .popover .reset-row {
+    border-top: 1px solid #eee;
+    padding-top: 8px;
+    margin-top: 10px;
+  }
+  .popover .reset-row button {
+    background: none;
+    border: none;
+    color: #2563eb;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+  }
+  .popover .reset-row button:hover { text-decoration: underline; }
+  /* Override #toolbar button defaults so seg-group active/inactive styling is visible inside the popover. */
+  #toolbar .popover .seg-group button {
+    background: #fff;
+    color: #374151;
+    border: none;
+    border-left: 1px solid #e5e7eb;
+    border-radius: 0;
+    padding: 5px 8px;
+  }
+  #toolbar .popover .seg-group button:first-child { border-left: none; }
+  #toolbar .popover .seg-group button:hover { background: #f3f4f6; }
+  #toolbar .popover .seg-group button.active {
+    background: #2563eb;
+    color: #fff;
+  }
+</style>
+</head>
+<body>
+  <div id="toolbar">
+    <strong>Diagram Builder</strong>
+    <span class="hint" id="status-hint">
+      Click empty → vertex · two vertices → edge · two edges sharing a vertex → angle
+    </span>
+    <span style="flex:1"></span>
+    <button id="tweaks-btn">Tweaks</button>
+    <button id="export-btn" class="primary">Export PNG</button>
+    <button id="clear-btn">Clear all</button>
+    <div id="tweaks-popover" class="popover">
+      <h4>Global tweaks</h4>
+      <div class="row">
+        <div class="row-label"><span>Line width</span><span class="value" id="line-scale-val">1.00×</span></div>
+        <input type="range" id="line-scale" min="0.5" max="2.5" step="0.05" value="1.0">
+      </div>
+      <div class="row">
+        <div class="row-label"><span>Font size</span><span class="value" id="font-scale-val">1.00×</span></div>
+        <input type="range" id="font-scale" min="0.7" max="4.0" step="0.05" value="1.0">
+      </div>
+      <div class="row">
+        <div class="row-label"><span>Font family</span></div>
+        <div class="seg-group" id="font-family-group">
+          <button data-val="serif">Serif</button>
+          <button data-val="sans">Sans</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-label"><span>Angle units</span></div>
+        <div class="seg-group" id="angle-unit-group">
+          <button data-val="deg">Degrees °</button>
+          <button data-val="rad">Radians ᶜ</button>
+          <button data-val="none">None</button>
+        </div>
+      </div>
+      <div class="row">
+        <label class="check-row">
+          <input type="checkbox" id="italic-vertex"> Italic vertex labels
+        </label>
+      </div>
+      <div class="reset-row">
+        <button id="tweaks-reset">Reset to defaults</button>
+      </div>
+    </div>
+  </div>
+  <div id="main">
+    <div id="left-tools">
+      <button class="tool-btn active" data-tool="vertex" title="Vertex (V)">
+        <svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="4" fill="#111827"/></svg>
+      </button>
+      <button class="tool-btn" data-tool="angle" title="Angle (click two edges/curves sharing a vertex)">
+        <svg width="22" height="22" viewBox="0 0 22 22">
+          <path d="M 4 18 L 18 18 M 4 18 L 17 6.5" stroke="#111827" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M 10.5 18 A 6.5 6.5 0 0 0 10.8 13.3" stroke="#111827" stroke-width="1.2" fill="none"/>
+        </svg>
+      </button>
+      <div class="tool-btn" id="circle-btn" title="Circle">
+        <svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="7.5" fill="none" stroke="#111827" stroke-width="1.5"/></svg>
+        <span class="tool-sub r" data-tool="circle-r" title="Radius method">R</span>
+        <span class="tool-sub d" data-tool="circle-d" title="Diameter method">D</span>
+      </div>
+      <button class="tool-btn" data-tool="ellipse" title="Ellipse">
+        <svg width="26" height="22" viewBox="0 0 26 22"><ellipse cx="13" cy="11" rx="10" ry="6.5" fill="none" stroke="#111827" stroke-width="1.5"/></svg>
+      </button>
+    </div>
+  <div id="canvas-wrap">
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="grid-minor" width="20" height="20" patternUnits="userSpaceOnUse">
+          <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#ececec" stroke-width="1"/>
+        </pattern>
+        <pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse">
+          <rect width="100" height="100" fill="url(#grid-minor)"/>
+          <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#d8d8d8" stroke-width="1"/>
+        </pattern>
+      </defs>
+      <rect id="background" width="100%" height="100%" fill="url(#grid)"/>
+      <g id="pan-layer">
+        <g id="snap-guides"></g>
+        <g id="curves-layer"></g>
+        <g id="edges-layer"></g>
+        <g id="angles-layer"></g>
+        <g id="vertices-layer"></g>
+      </g>
+    </svg>
+    <div id="ctx-menu"></div>
+  </div>
+  </div>
+
+<script>
+(() => {
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const GRID = 20;
+  const VERTEX_SNAP = 8;
+  const GRID_SNAP = 6;
+  const DRAG_THRESHOLD = 3;
+  const VERTEX_R = 5;
+  const HIT_R = 12;
+  const ANGLE_R = 24;
+  const RIGHT_ANGLE_R = 14;
+  const ANGLE_LABEL_OFFSET = 14;
+  const EDGE_LABEL_OFFSET = 14;
+  const VERTEX_LABEL_DIST = 16;
+  const LABEL_SNAP_BACK = 6; // drag within this of auto pos → reset to auto
+
+  const DEFAULT_EDGE_WIDTH = 1.75;
+  const DEFAULT_EDGE_STYLE = 'solid';
+  const EDGE_WIDTHS = [
+    { key: 'thin',  label: 'Thin',   value: 1 },
+    { key: 'med',   label: 'Medium', value: 1.75 },
+    { key: 'thick', label: 'Thick',  value: 3 },
+  ];
+  const EDGE_STYLES = [
+    { key: 'solid',  label: 'Solid',  dash: null },
+    { key: 'dashed', label: 'Dashed', dash: '6 4' },
+    { key: 'dotted', label: 'Dotted', dash: '1 4' },
+  ];
+  const GREEK = ['α','β','γ','δ','ε','ζ','η','θ','ι','κ','λ','μ','ν','ξ','ο','π','ρ','σ','τ','υ','φ','χ','ψ','ω'];
+  const GREEK_NAMES = {
+    alpha:'α', beta:'β', gamma:'γ', delta:'δ', epsilon:'ε', zeta:'ζ',
+    eta:'η', theta:'θ', iota:'ι', kappa:'κ', lambda:'λ', mu:'μ',
+    nu:'ν', xi:'ξ', omicron:'ο', pi:'π', rho:'ρ', sigma:'σ',
+    tau:'τ', upsilon:'υ', phi:'φ', chi:'χ', psi:'ψ', omega:'ω',
+    Alpha:'Α', Beta:'Β', Gamma:'Γ', Delta:'Δ', Epsilon:'Ε', Zeta:'Ζ',
+    Eta:'Η', Theta:'Θ', Iota:'Ι', Kappa:'Κ', Lambda:'Λ', Mu:'Μ',
+    Nu:'Ν', Xi:'Ξ', Omicron:'Ο', Pi:'Π', Rho:'Ρ', Sigma:'Σ',
+    Tau:'Τ', Upsilon:'Υ', Phi:'Φ', Chi:'Χ', Psi:'Ψ', Omega:'Ω',
+  };
+  function applyGreekSubst(str) {
+    return str.replace(/\\([A-Za-z]+)/g, (match, name) => {
+      // Greedy longest-prefix match against known Greek names.
+      for (let len = name.length; len >= 1; len--) {
+        const prefix = name.slice(0, len);
+        if (GREEK_NAMES[prefix]) return GREEK_NAMES[prefix] + name.slice(len);
+      }
+      return match;
+    });
+  }
+  const ANGLE_RADIUS_STEP = 10; // concentric spacing for angles sharing edges
+  const MARKER_SIZE = 4;        // radius of circle/cross markers
+
+  const svg = document.getElementById('canvas');
+  const edgesLayer = document.getElementById('edges-layer');
+  const anglesLayer = document.getElementById('angles-layer');
+  const verticesLayer = document.getElementById('vertices-layer');
+  const curvesLayer = document.getElementById('curves-layer');
+  const snapGuidesLayer = document.getElementById('snap-guides');
+  const clearBtn = document.getElementById('clear-btn');
+  const ctxMenu = document.getElementById('ctx-menu');
+  const wrap = document.getElementById('canvas-wrap');
+
+  const VERTEX_FONT = 14;
+  const EDGE_FONT = 13;
+  const ANGLE_FONT = 13;
+  const ANGLE_BASE_STROKE = 1.5;
+
+  const DEFAULT_TWEAKS = {
+    lineScale: 1.0,
+    fontScale: 1.0,
+    italicVertex: false,
+    fontFamily: 'serif',  // 'serif' | 'sans'
+    angleUnit: 'deg',     // 'deg' | 'rad' | 'none'
+  };
+
+  const CURVE_SNAP = 8;
+  const EDGE_SNAP = 8;
+  const CONSTRAINT_FREE_DIST = 1e9; // no auto-release; user must use menu
+
+  const state = {
+    vertices: [],   // {id, label, x, y, hidden, labelOffset, color, constraint}
+    edges: [],      // {id, label, v1, v2, width, style, ticks, arrows, hidden, labelOffset, color}
+    angles: [],     // {id, label, vertexId, e1, e2, marker, reflex, labelOffset, color}
+    circles: [],    // {id, label, centerId, perimId, width, style, hidden, color, labelOffset, visibleArc}
+    ellipses: [],   // {id, label, centerId, p1Id, p2Id, width, style, hidden, color, labelOffset, visibleArc}
+    nextId: 1,
+    selection: null, // { kind, id }
+    menu: null,      // { kind, id }
+    tool: { name: 'vertex', step: 0, data: {} },
+    tweaks: { ...DEFAULT_TWEAKS },
+    panX: 0,
+    panY: 0,
+    zoom: 1,
+  };
+  const MIN_ZOOM = 0.1, MAX_ZOOM = 10;
+
+  function setTool(name) {
+    state.tool = { name, step: 0, data: {} };
+    clearSelection();
+    updateToolButtons();
+    updateStatusHint();
+    render();
+  }
+  function resetTool() { setTool('vertex'); }
+  // Vertex IDs currently held in the active tool's data (e.g. the first vertex
+  // picked while drawing a circle or ellipse). Rendered with the blue selection
+  // style so users see what's been picked so far.
+  function toolPickedVertexIds() {
+    const set = new Set();
+    const data = state.tool && state.tool.data;
+    if (!data) return set;
+    for (const key of ['centerId', 'perimId', 'p1Id', 'p2Id', 'aId', 'bId']) {
+      if (data[key] != null) set.add(data[key]);
+    }
+    return set;
+  }
+  // True if a tool action (currently just arc-delete) is targeting this curve.
+  function isToolTargetCurve(kind, id) {
+    const data = state.tool && state.tool.data;
+    return !!(data && data.shapeKind === kind && data.shapeId === id);
+  }
+
+  function vertexFontSize() { return VERTEX_FONT * state.tweaks.fontScale; }
+  function edgeFontSize()   { return EDGE_FONT * state.tweaks.fontScale; }
+  function angleFontSize()  { return ANGLE_FONT * state.tweaks.fontScale; }
+
+  // ---------- Label generation: smallest unused ----------
+  function nextLabelFor(kind) {
+    const used = new Set();
+    if (kind === 'vertex') state.vertices.forEach(v => used.add(v.label));
+    else if (kind === 'edge') state.edges.forEach(e => used.add(e.label));
+    else if (kind === 'angle') state.angles.forEach(a => used.add(a.label));
+    else if (kind === 'circle' || kind === 'ellipse') return '';
+    let i = 0;
+    while (true) {
+      const lbl = generateLabel(kind, i);
+      if (!used.has(lbl)) return lbl;
+      i++;
+    }
+  }
+  function generateLabel(kind, idx) {
+    if (kind === 'vertex') return alphaLabel(idx, 65);
+    if (kind === 'edge')   return alphaLabel(idx, 97);
+    if (kind === 'angle') {
+      const base = GREEK[idx % GREEK.length];
+      const sub = Math.floor(idx / GREEK.length);
+      if (sub === 0) return base;
+      const subStr = String(sub).split('').map(d => String.fromCharCode(0x2080 + Number(d))).join('');
+      return base + subStr;
+    }
+    return '';
+  }
+  function alphaLabel(idx, base) {
+    let n = idx + 1, s = '';
+    while (n > 0) { n--; s = String.fromCharCode(base + (n % 26)) + s; n = Math.floor(n / 26); }
+    return s;
+  }
+  function displayAngleLabel(raw) {
+    if (raw == null || raw === '') return '';
+    const t = raw.trim();
+    if (/^-?\d+(\.\d+)?$/.test(t)) {
+      const unit = state.tweaks.angleUnit;
+      if (unit === 'deg') return t + '°';
+      if (unit === 'rad') return t + 'ᶜ';
+      return t;
+    }
+    return raw;
+  }
+
+  // ---------- Lookup ----------
+  function svgPoint(evt) {
+    const r = svg.getBoundingClientRect();
+    return {
+      x: (evt.clientX - r.left - state.panX) / state.zoom,
+      y: (evt.clientY - r.top - state.panY) / state.zoom,
+    };
+  }
+  function applyPan() {
+    const tform = `translate(${state.panX} ${state.panY}) scale(${state.zoom})`;
+    const panLayer = document.getElementById('pan-layer');
+    if (panLayer) panLayer.setAttribute('transform', tform);
+    const pattern = document.getElementById('grid');
+    if (pattern) pattern.setAttribute('patternTransform', tform);
+  }
+  const findVertexById = id => state.vertices.find(v => v.id === id) || null;
+  const findEdgeById   = id => state.edges.find(e => e.id === id) || null;
+  const findAngleById  = id => state.angles.find(a => a.id === id) || null;
+  const findCircleById = id => state.circles.find(c => c.id === id) || null;
+  const findEllipseById= id => state.ellipses.find(e => e.id === id) || null;
+  function findItem(kind, id) {
+    if (kind === 'vertex') return findVertexById(id);
+    if (kind === 'edge')   return findEdgeById(id);
+    if (kind === 'angle')  return findAngleById(id);
+    if (kind === 'circle') return findCircleById(id);
+    if (kind === 'ellipse')return findEllipseById(id);
+    return null;
+  }
+  function sharedVertexOf(e1, e2) {
+    if (e1.v1 === e2.v1 || e1.v1 === e2.v2) return e1.v1;
+    if (e1.v2 === e2.v1 || e1.v2 === e2.v2) return e1.v2;
+    return null;
+  }
+  const otherEndpoint = (edge, vId) => edge.v1 === vId ? edge.v2 : edge.v1;
+
+  // ---------- Selection ----------
+  function isSelected(kind, id) {
+    return state.selection && state.selection.kind === kind && state.selection.id === id;
+  }
+  function clearSelection() { state.selection = null; }
+  function selectVertex(id) { state.selection = { kind: 'vertex', id }; }
+  function selectEdge(id)   { state.selection = { kind: 'edge', id }; }
+  function selectAngle(id)  { state.selection = { kind: 'angle', id }; }
+
+  // ---------- Snapping (vertex drag) ----------
+  function snap(x, y, excludeId) {
+    const others = state.vertices.filter(v => v.id !== excludeId);
+    let snappedX = null, snappedY = null;
+    let guideX = null, guideY = null;
+    let bestDxV = VERTEX_SNAP + 1;
+    for (const v of others) {
+      const d = Math.abs(v.x - x);
+      if (d < bestDxV) { bestDxV = d; snappedX = v.x; guideX = v; }
+    }
+    let bestDyV = VERTEX_SNAP + 1;
+    for (const v of others) {
+      const d = Math.abs(v.y - y);
+      if (d < bestDyV) { bestDyV = d; snappedY = v.y; guideY = v; }
+    }
+    if (snappedX === null) {
+      const gx = Math.round(x / GRID) * GRID;
+      if (Math.abs(gx - x) <= GRID_SNAP) snappedX = gx;
+    }
+    if (snappedY === null) {
+      const gy = Math.round(y / GRID) * GRID;
+      if (Math.abs(gy - y) <= GRID_SNAP) snappedY = gy;
+    }
+    const fx = snappedX !== null ? snappedX : x;
+    const fy = snappedY !== null ? snappedY : y;
+    const guides = [];
+    if (guideX) guides.push({ x1: fx, y1: guideX.y, x2: fx, y2: fy });
+    if (guideY) guides.push({ x1: guideY.x, y1: fy, x2: fx, y2: fy });
+    return { x: fx, y: fy, guides };
+  }
+
+  // ---------- Mutations ----------
+  function addVertex(x, y) {
+    // Highest priority: if the click is near a point where two nearby curves /
+    // lines intersect, snap to that intersection and constrain to BOTH.
+    const isect = nearestIntersectionAt(x, y);
+    let sx, sy, constraint = null;
+    if (isect) {
+      sx = isect.x; sy = isect.y;
+      constraint = { kind: 'intersection', a: isect.refA, b: isect.refB };
+    } else {
+      // Curve snap takes priority, then edge snap, then grid/vertex alignment.
+      const curveHit = nearestCurveSnap(x, y);
+      if (curveHit) {
+        sx = curveHit.x; sy = curveHit.y;
+        constraint = { kind: curveHit.kind, id: curveHit.id };
+      } else {
+        const edgeHit = nearestEdgeSnap(x, y);
+        if (edgeHit) {
+          sx = edgeHit.x; sy = edgeHit.y;
+          constraint = { kind: 'edge', id: edgeHit.id };
+        } else {
+          const s = snap(x, y, null);
+          sx = s.x; sy = s.y;
+        }
+      }
+    }
+    const v = {
+      id: state.nextId++,
+      label: nextLabelFor('vertex'),
+      x: sx, y: sy,
+      hidden: false,
+      labelOffset: null,
+      color: null,
+      labelColor: null,
+      constraint,
+    };
+    state.vertices.push(v);
+    render();
+    return v;
+  }
+  function addEdge(v1Id, v2Id) {
+    if (v1Id === v2Id) return null;
+    const exists = state.edges.some(e =>
+      (e.v1 === v1Id && e.v2 === v2Id) || (e.v1 === v2Id && e.v2 === v1Id));
+    if (exists) return null;
+    const e = {
+      id: state.nextId++,
+      label: nextLabelFor('edge'),
+      v1: v1Id, v2: v2Id,
+      width: DEFAULT_EDGE_WIDTH,
+      style: DEFAULT_EDGE_STYLE,
+      ticks: 0,
+      arrows: 0,
+      hidden: false,
+      labelOffset: null,
+      color: null,
+      labelColor: null,
+    };
+    state.edges.push(e);
+    render();
+    return e;
+  }
+  function addAngle(e1Id, e2Id, e1Pt, e2Pt) {
+    if (e1Id === e2Id) return null;
+    const e1 = findEdgeById(e1Id);
+    const e2 = findEdgeById(e2Id);
+    if (!e1 || !e2) return null;
+    const candidates = sharedVerticesEdgeEdge(e1, e2);
+    if (candidates.length === 0) return null;
+    const vId = pickBestSharedVertex(candidates, e1Pt, e2Pt);
+    // Dedup only when no click hints were provided (legacy code path that
+    // can't disambiguate by region). Hinted creations are allowed to stack so
+    // users can mark every angle around an X-crossing.
+    if (!e1Pt && !e2Pt) {
+      const exists = state.angles.some(a =>
+        a.vertexId === vId &&
+        ((a.e1 === e1Id && a.e2 === e2Id) || (a.e1 === e2Id && a.e2 === e1Id)));
+      if (exists) return null;
+    }
+    const a = {
+      id: state.nextId++,
+      label: nextLabelFor('angle'),
+      vertexId: vId,
+      e1: e1Id, e2: e2Id,
+      ray1Source: null,
+      ray2Source: null,
+      ray1Hint: hintFromClickPt(e1Pt, vId),
+      ray2Hint: hintFromClickPt(e2Pt, vId),
+      marker: 'arc',
+      reflex: false,
+      labelOffset: null,
+      color: null,
+      labelColor: null,
+    };
+    state.angles.push(a);
+    render();
+    return a;
+  }
+  function deleteVertex(id) {
+    const removedEdgeIds = new Set(state.edges.filter(e => e.v1 === id || e.v2 === id).map(e => e.id));
+    const removedCircleIds = new Set(state.circles
+      .filter(c => c.centerId === id || c.perimId === id).map(c => c.id));
+    const removedEllipseIds = new Set(state.ellipses
+      .filter(e => e.centerId === id || e.p1Id === id || e.p2Id === id).map(e => e.id));
+    state.vertices = state.vertices.filter(v => v.id !== id);
+    state.edges = state.edges.filter(e => !removedEdgeIds.has(e.id));
+    const removedAngleIds = new Set(state.angles
+      .filter(a => a.vertexId === id
+        || removedEdgeIds.has(a.e1) || removedEdgeIds.has(a.e2)
+        || (a.ray1Source && a.ray1Source.type === 'tangent' &&
+            ((a.ray1Source.curveKind === 'circle' && removedCircleIds.has(a.ray1Source.curveId)) ||
+             (a.ray1Source.curveKind === 'ellipse' && removedEllipseIds.has(a.ray1Source.curveId))))
+        || (a.ray2Source && a.ray2Source.type === 'tangent' &&
+            ((a.ray2Source.curveKind === 'circle' && removedCircleIds.has(a.ray2Source.curveId)) ||
+             (a.ray2Source.curveKind === 'ellipse' && removedEllipseIds.has(a.ray2Source.curveId)))))
+      .map(a => a.id));
+    state.angles = state.angles.filter(a => !removedAngleIds.has(a.id));
+    state.circles = state.circles.filter(c => !removedCircleIds.has(c.id));
+    state.ellipses = state.ellipses.filter(e => !removedEllipseIds.has(e.id));
+    // Drop constraints pointing to deleted curves/edges, and demote
+    // intersection constraints whose targets were removed.
+    const isRemoved = (c) =>
+      (c.kind === 'circle' && removedCircleIds.has(c.id)) ||
+      (c.kind === 'ellipse' && removedEllipseIds.has(c.id)) ||
+      (c.kind === 'edge' && removedEdgeIds.has(c.id));
+    for (const v of state.vertices) {
+      if (!v.constraint) continue;
+      if (v.constraint.kind === 'intersection') {
+        const aRem = isRemoved(v.constraint.a);
+        const bRem = isRemoved(v.constraint.b);
+        if (aRem && bRem) v.constraint = null;
+        else if (aRem) v.constraint = { kind: v.constraint.b.kind, id: v.constraint.b.id };
+        else if (bRem) v.constraint = { kind: v.constraint.a.kind, id: v.constraint.a.id };
+      } else if (isRemoved(v.constraint)) {
+        v.constraint = null;
+      }
+    }
+    // Restore full curve if a visible-arc endpoint vertex was removed.
+    for (const c of state.circles) {
+      if (c.visibleArc && (c.visibleArc.aId === id || c.visibleArc.bId === id)) c.visibleArc = null;
+    }
+    for (const e of state.ellipses) {
+      if (e.visibleArc && (e.visibleArc.aId === id || e.visibleArc.bId === id)) e.visibleArc = null;
+    }
+    if (isSelected('vertex', id)) clearSelection();
+    if (state.selection && state.selection.kind === 'edge' && removedEdgeIds.has(state.selection.id)) clearSelection();
+    if (state.selection && state.selection.kind === 'angle' && removedAngleIds.has(state.selection.id)) clearSelection();
+    if (state.selection && state.selection.kind === 'circle' && removedCircleIds.has(state.selection.id)) clearSelection();
+    if (state.selection && state.selection.kind === 'ellipse' && removedEllipseIds.has(state.selection.id)) clearSelection();
+    render();
+  }
+  function deleteEdge(id) {
+    state.edges = state.edges.filter(e => e.id !== id);
+    const removedAngleIds = new Set(state.angles.filter(a => a.e1 === id || a.e2 === id).map(a => a.id));
+    state.angles = state.angles.filter(a => !removedAngleIds.has(a.id));
+    demoteConstraintRefs('edge', id);
+    if (isSelected('edge', id)) clearSelection();
+    if (state.selection && state.selection.kind === 'angle' && removedAngleIds.has(state.selection.id)) clearSelection();
+    render();
+  }
+  function demoteConstraintRefs(kind, id) {
+    for (const v of state.vertices) {
+      if (!v.constraint) continue;
+      if (v.constraint.kind === 'intersection') {
+        const aRem = v.constraint.a.kind === kind && v.constraint.a.id === id;
+        const bRem = v.constraint.b.kind === kind && v.constraint.b.id === id;
+        if (aRem && bRem) v.constraint = null;
+        else if (aRem) v.constraint = { kind: v.constraint.b.kind, id: v.constraint.b.id };
+        else if (bRem) v.constraint = { kind: v.constraint.a.kind, id: v.constraint.a.id };
+      } else if (v.constraint.kind === kind && v.constraint.id === id) {
+        v.constraint = null;
+      }
+    }
+  }
+  function deleteAngle(id) {
+    state.angles = state.angles.filter(a => a.id !== id);
+    if (isSelected('angle', id)) clearSelection();
+    render();
+  }
+  // Find a vertex that's both an endpoint of `edge` AND lies on `curve` (centerId, perimId, or constrained-to-curve).
+  function edgeCurveSharedPerimVertex(edge, curveKind, curveId) {
+    const curve = curveKind === 'circle' ? findCircleById(curveId) : findEllipseById(curveId);
+    if (!curve) return null;
+    const perimIds = new Set();
+    if (curveKind === 'circle') perimIds.add(curve.perimId);
+    else { perimIds.add(curve.p1Id); perimIds.add(curve.p2Id); }
+    // explicit perimeter vertices first
+    if (perimIds.has(edge.v1)) return edge.v1;
+    if (perimIds.has(edge.v2)) return edge.v2;
+    // then any endpoint constrained to this curve
+    const v1 = findVertexById(edge.v1);
+    const v2 = findVertexById(edge.v2);
+    if (v1 && v1.constraint && v1.constraint.kind === curveKind && v1.constraint.id === curveId) return edge.v1;
+    if (v2 && v2.constraint && v2.constraint.kind === curveKind && v2.constraint.id === curveId) return edge.v2;
+    return null;
+  }
+  // True if vertex lies on (or extends from) the edge's line — endpoint,
+  // edge-constrained, intersection-constrained-to-this-edge, or geometrically
+  // on the line.
+  function vertexOnEdgeLine(vId, edge) {
+    const v = findVertexById(vId);
+    if (!v) return false;
+    if (vId === edge.v1 || vId === edge.v2) return true;
+    if (v.constraint) {
+      if (v.constraint.kind === 'edge' && v.constraint.id === edge.id) return true;
+      if (v.constraint.kind === 'intersection') {
+        const refs = (c) => c.kind === 'edge' && c.id === edge.id;
+        if (refs(v.constraint.a) || refs(v.constraint.b)) return true;
+      }
+    }
+    const a = findVertexById(edge.v1), b = findVertexById(edge.v2);
+    if (!a || !b) return false;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-6) return Math.hypot(v.x - a.x, v.y - a.y) <= PERIM_TOL;
+    const t = ((v.x - a.x) * dx + (v.y - a.y) * dy) / len2;
+    const px = a.x + t * dx, py = a.y + t * dy;
+    return Math.hypot(v.x - px, v.y - py) <= PERIM_TOL;
+  }
+  // Candidate shared vertices between an edge and a curve — anything on both.
+  function edgeCurveSharedVertices(edge, curveKind, curveId) {
+    const onCurve = curvePerimVertexIds(curveKind, curveId);
+    const ids = [];
+    for (const v of state.vertices) {
+      if (onCurve.has(v.id) && vertexOnEdgeLine(v.id, edge)) ids.push(v.id);
+    }
+    return ids;
+  }
+  // Candidate shared vertices between two edges — anything on both lines.
+  function sharedVerticesEdgeEdge(e1, e2) {
+    const ids = [];
+    for (const v of state.vertices) {
+      if (vertexOnEdgeLine(v.id, e1) && vertexOnEdgeLine(v.id, e2)) ids.push(v.id);
+    }
+    return ids;
+  }
+  function edgeHasEndpoint(edgeId, vId) {
+    const e = findEdgeById(edgeId);
+    return !!(e && (e.v1 === vId || e.v2 === vId));
+  }
+  function addEdgeCurveAngle(edgeId, curveKind, curveId, edgePt, curvePt) {
+    const edge = findEdgeById(edgeId);
+    if (!edge) return false;
+    const candidates = edgeCurveSharedVertices(edge, curveKind, curveId);
+    if (candidates.length === 0) return false;
+    const vId = pickBestSharedVertex(candidates, edgePt, curvePt);
+    const a = {
+      id: state.nextId++,
+      label: nextLabelFor('angle'),
+      vertexId: vId,
+      e1: edgeId,
+      e2: null,
+      ray1Source: null,
+      ray1Hint: hintFromClickPt(edgePt, vId),
+      ray2Source: { type: 'tangent', curveKind, curveId },
+      ray2Hint: hintFromClickPt(curvePt, vId),
+      marker: 'arc',
+      reflex: false,
+      labelOffset: null,
+      color: null,
+      labelColor: null,
+    };
+    state.angles.push(a);
+    return true;
+  }
+  function addCurveCurveAngle(kind1, id1, kind2, id2, pt1, pt2) {
+    if (kind1 === kind2 && id1 === id2) return false;
+    const set1 = curvePerimVertexIds(kind1, id1);
+    const set2 = curvePerimVertexIds(kind2, id2);
+    const candidates = [];
+    for (const vId of set1) if (set2.has(vId)) candidates.push(vId);
+    if (candidates.length === 0) return false;
+    const vId = pickBestSharedVertex(candidates, pt1, pt2);
+    const a = {
+      id: state.nextId++,
+      label: nextLabelFor('angle'),
+      vertexId: vId,
+      e1: null, e2: null,
+      ray1Source: { type: 'tangent', curveKind: kind1, curveId: id1 },
+      ray2Source: { type: 'tangent', curveKind: kind2, curveId: id2 },
+      ray1Hint: hintFromClickPt(pt1, vId),
+      ray2Hint: hintFromClickPt(pt2, vId),
+      marker: 'arc',
+      reflex: false,
+      labelOffset: null,
+      color: null,
+      labelColor: null,
+    };
+    state.angles.push(a);
+    return true;
+  }
+
+  function addCircle(centerId, perimId) {
+    if (centerId === perimId) return null;
+    const c = {
+      id: state.nextId++,
+      label: nextLabelFor('circle'),
+      centerId, perimId,
+      width: DEFAULT_EDGE_WIDTH,
+      style: DEFAULT_EDGE_STYLE,
+      hidden: false,
+      color: null,
+      labelOffset: null,
+      visibleArc: null, // null = whole circle; {aId, bId} (CCW from vertex aId to bId)
+    };
+    state.circles.push(c);
+    render();
+    return c;
+  }
+  function addEllipse(centerId, p1Id, p2Id) {
+    if (centerId === p1Id || centerId === p2Id || p1Id === p2Id) return null;
+    const e = {
+      id: state.nextId++,
+      label: nextLabelFor('ellipse'),
+      centerId, p1Id, p2Id,
+      width: DEFAULT_EDGE_WIDTH,
+      style: DEFAULT_EDGE_STYLE,
+      hidden: false,
+      color: null,
+      labelOffset: null,
+      visibleArc: null,
+    };
+    state.ellipses.push(e);
+    render();
+    return e;
+  }
+  function angleRefsCurve(a, kind, id) {
+    const refs = (rs) => rs && rs.type === 'tangent' && rs.curveKind === kind && rs.curveId === id;
+    return refs(a.ray1Source) || refs(a.ray2Source);
+  }
+  function deleteCircle(id) {
+    state.circles = state.circles.filter(c => c.id !== id);
+    state.angles = state.angles.filter(a => !angleRefsCurve(a, 'circle', id));
+    demoteConstraintRefs('circle', id);
+    if (isSelected('circle', id)) clearSelection();
+    render();
+  }
+  function deleteEllipse(id) {
+    state.ellipses = state.ellipses.filter(e => e.id !== id);
+    state.angles = state.angles.filter(a => !angleRefsCurve(a, 'ellipse', id));
+    demoteConstraintRefs('ellipse', id);
+    if (isSelected('ellipse', id)) clearSelection();
+    render();
+  }
+  function clearAll() {
+    state.vertices = []; state.edges = []; state.angles = [];
+    state.circles = []; state.ellipses = [];
+    state.panX = 0; state.panY = 0; state.zoom = 1;
+    applyPan();
+    clearSelection();
+    closeMenu();
+    clearSnapGuides();
+    resetTool();
+  }
+
+  // ---------- Angle geometry ----------
+  // Returns the angle (radians) of a ray from V outward.
+  // edgeId is used when raySource is null; raySource lets us define non-edge rays (tangent to a curve).
+  function rayDirectionAngle(v, edgeId, raySource) {
+    if (raySource) {
+      if (raySource.type === 'tangent') {
+        if (raySource.curveKind === 'circle') {
+          const c = findCircleById(raySource.curveId);
+          if (!c) return null;
+          const g = circleGeom(c);
+          if (!g) return null;
+          // Tangent at V: perpendicular to (V - center), rotated 90° CCW
+          const rx = v.x - g.cx, ry = v.y - g.cy;
+          if (Math.hypot(rx, ry) < 1e-6) return null;
+          return Math.atan2(rx, -ry); // = atan2(perp_y, perp_x) where perp = (-ry, rx)
+        }
+        if (raySource.curveKind === 'ellipse') {
+          const e = findEllipseById(raySource.curveId);
+          if (!e) return null;
+          const g = ellipseGeom(e);
+          if (!g) return null;
+          // Parametric tangent at V
+          const { u, vL } = (() => {
+            const loc = ellipseLocal(g, v.x, v.y);
+            return { u: loc.u, vL: loc.v };
+          })();
+          // cos t = u/a, sin t = vL/b
+          // tangent local: (-a sin t, b cos t) = (-a vL / b, b u / a)
+          const tu = -g.a * vL / g.b;
+          const tv = g.b * u / g.a;
+          // Rotate to world
+          const wx = tu * g.ux + tv * g.vx;
+          const wy = tu * g.uy + tv * g.vy;
+          if (Math.hypot(wx, wy) < 1e-6) return null;
+          return Math.atan2(wy, wx);
+        }
+      }
+      return null;
+    }
+    const e = findEdgeById(edgeId);
+    if (!e) return null;
+    if (v.id === e.v1) {
+      const other = findVertexById(e.v2);
+      if (!other) return null;
+      return Math.atan2(other.y - v.y, other.x - v.x);
+    }
+    if (v.id === e.v2) {
+      const other = findVertexById(e.v1);
+      if (!other) return null;
+      return Math.atan2(other.y - v.y, other.x - v.x);
+    }
+    // V lies on the edge's line but is not an endpoint (intersection or
+    // line-constrained vertex). Return the canonical line direction; the
+    // hint logic in angleGeom flips it to match the user's click side.
+    const v1 = findVertexById(e.v1);
+    const v2 = findVertexById(e.v2);
+    if (!v1 || !v2) return null;
+    return Math.atan2(v2.y - v1.y, v2.x - v1.x);
+  }
+  function angleGeom(angle) {
+    const v = findVertexById(angle.vertexId);
+    if (!v) return { ok: false };
+    let a1 = rayDirectionAngle(v, angle.e1, angle.ray1Source);
+    let a2 = rayDirectionAngle(v, angle.e2, angle.ray2Source);
+    if (a1 == null || a2 == null) return { ok: false };
+    // Tangent rays are line directions (either orientation is geometrically
+    // equivalent). Pick the orientation that puts the arc on the natural side
+    // — i.e. the smallest unsigned angle between the rays. The reflex toggle
+    // flips to the supplement.
+    const wrap = (d) => { while (d > Math.PI) d -= 2*Math.PI; while (d <= -Math.PI) d += 2*Math.PI; return d; };
+    // A ray is "ambiguous" (two valid directions) when it's a curve tangent
+    // OR an edge ray whose vertex is not an endpoint of that edge (an
+    // intersection/line-locked vertex sees the line going both ways).
+    const isAmbig1 = (angle.ray1Source && angle.ray1Source.type === 'tangent') ||
+                     (angle.e1 != null && !edgeHasEndpoint(angle.e1, angle.vertexId));
+    const isAmbig2 = (angle.ray2Source && angle.ray2Source.type === 'tangent') ||
+                     (angle.e2 != null && !edgeHasEndpoint(angle.e2, angle.vertexId));
+    // A hint vector (saved from where the user clicked the curve/line) pins
+    // the direction to the click side. Without a hint, fall back to the
+    // "closer to the other ray" heuristic.
+    if (isAmbig1 && angle.ray1Hint) {
+      const c = Math.cos(a1) * angle.ray1Hint.dx + Math.sin(a1) * angle.ray1Hint.dy;
+      if (c < 0) a1 += Math.PI;
+    }
+    if (isAmbig2 && angle.ray2Hint) {
+      const c = Math.cos(a2) * angle.ray2Hint.dx + Math.sin(a2) * angle.ray2Hint.dy;
+      if (c < 0) a2 += Math.PI;
+    }
+    const need1 = isAmbig1 && !angle.ray1Hint;
+    const need2 = isAmbig2 && !angle.ray2Hint;
+    if (need1 && need2) {
+      let best = [a1, a2], bestD = Math.abs(wrap(a2 - a1));
+      for (const c1 of [a1, a1 + Math.PI]) {
+        for (const c2 of [a2, a2 + Math.PI]) {
+          const d = Math.abs(wrap(c2 - c1));
+          if (d < bestD) { bestD = d; best = [c1, c2]; }
+        }
+      }
+      a1 = best[0]; a2 = best[1];
+    } else if (need1) {
+      if (Math.abs(wrap(a1 + Math.PI - a2)) < Math.abs(wrap(a1 - a2))) a1 += Math.PI;
+    } else if (need2) {
+      if (Math.abs(wrap(a2 + Math.PI - a1)) < Math.abs(wrap(a2 - a1))) a2 += Math.PI;
+    }
+    let delta = a2 - a1;
+    while (delta > Math.PI)  delta -= 2 * Math.PI;
+    while (delta <= -Math.PI) delta += 2 * Math.PI;
+    return { ok: true, vx: v.x, vy: v.y, a1, a2, delta };
+  }
+  function effectiveBisector(angle, gm) {
+    // For 'right' marker, reflex has no geometric meaning — stay on the short side.
+    const base = gm.a1 + gm.delta / 2;
+    if (angle.marker === 'right') return base;
+    return base + (angle.reflex ? Math.PI : 0);
+  }
+  function buildArcPath(g, r, reflex) {
+    const sx = g.vx + r * Math.cos(g.a1);
+    const sy = g.vy + r * Math.sin(g.a1);
+    const ex = g.vx + r * Math.cos(g.a1 + g.delta);
+    const ey = g.vy + r * Math.sin(g.a1 + g.delta);
+    let sweep = g.delta > 0 ? 1 : 0;
+    let large = 0;
+    if (reflex) { sweep = 1 - sweep; large = 1; }
+    return `M ${sx} ${sy} A ${r} ${r} 0 ${large} ${sweep} ${ex} ${ey}`;
+  }
+  function buildSquarePath(g, r) {
+    const p1x = g.vx + r * Math.cos(g.a1);
+    const p1y = g.vy + r * Math.sin(g.a1);
+    const p2x = g.vx + r * Math.cos(g.a1 + g.delta);
+    const p2y = g.vy + r * Math.sin(g.a1 + g.delta);
+    const cx = p1x + p2x - g.vx;
+    const cy = p1y + p2y - g.vy;
+    return `M ${p1x} ${p1y} L ${cx} ${cy} L ${p2x} ${p2y}`;
+  }
+  function buildCrossPath(cx, cy, s) {
+    return `M ${cx - s} ${cy - s} L ${cx + s} ${cy + s} M ${cx - s} ${cy + s} L ${cx + s} ${cy - s}`;
+  }
+  function angleMarkerCenter(angle, gm, r) {
+    const bis = effectiveBisector(angle, gm);
+    return { x: gm.vx + r * Math.cos(bis), y: gm.vy + r * Math.sin(bis) };
+  }
+
+  // ---------- Circle / Ellipse geometry ----------
+  function circleGeom(c) {
+    const ctr = findVertexById(c.centerId);
+    const per = findVertexById(c.perimId);
+    if (!ctr || !per) return null;
+    const r = Math.hypot(per.x - ctr.x, per.y - ctr.y);
+    return { cx: ctr.x, cy: ctr.y, r };
+  }
+  // For an ellipse, sort the two perimeter points; farther one defines major.
+  function ellipseGeom(e) {
+    const ctr = findVertexById(e.centerId);
+    const p1 = findVertexById(e.p1Id);
+    const p2 = findVertexById(e.p2Id);
+    if (!ctr || !p1 || !p2) return null;
+    const d1 = Math.hypot(p1.x - ctr.x, p1.y - ctr.y);
+    const d2 = Math.hypot(p2.x - ctr.x, p2.y - ctr.y);
+    const major = d1 >= d2 ? p1 : p2;
+    const minor = d1 >= d2 ? p2 : p1;
+    const a = d1 >= d2 ? d1 : d2;
+    if (a < 1e-6) return null;
+    // axis unit u, perpendicular v (rotated 90° CCW)
+    const ux = (major.x - ctr.x) / a;
+    const uy = (major.y - ctr.y) / a;
+    const vx = -uy, vy = ux;
+    // minor point in rotated frame
+    const dx = minor.x - ctr.x, dy = minor.y - ctr.y;
+    const mu = dx * ux + dy * uy;   // along major
+    const mv = dx * vx + dy * vy;   // along minor
+    // x²/a² + y²/b² = 1 → b² = mv² / (1 - mu²/a²)
+    const denom = 1 - (mu * mu) / (a * a);
+    let b;
+    if (denom <= 1e-6) {
+      // minor point outside or at tip — fall back to small ratio
+      b = Math.max(Math.abs(mv), a * 0.01);
+    } else {
+      b = Math.abs(mv) / Math.sqrt(denom);
+    }
+    if (b < 1e-6) b = a * 0.05;
+    const theta = Math.atan2(uy, ux); // angle of major axis (in SVG coords)
+    return { cx: ctr.x, cy: ctr.y, a, b, theta, ux, uy, vx, vy };
+  }
+
+  // Convert a point to ellipse local frame (u, v) coordinates.
+  function ellipseLocal(g, x, y) {
+    const dx = x - g.cx, dy = y - g.cy;
+    return { u: dx * g.ux + dy * g.uy, v: dx * g.vx + dy * g.vy };
+  }
+  // Parametric angle t such that (a cos t, b sin t) is the local-frame point.
+  function ellipseParamAngle(g, x, y) {
+    const { u, v } = ellipseLocal(g, x, y);
+    return Math.atan2(v / g.b, u / g.a);
+  }
+  function ellipsePointAtAngle(g, t) {
+    const lu = g.a * Math.cos(t), lv = g.b * Math.sin(t);
+    return { x: g.cx + lu * g.ux + lv * g.vx, y: g.cy + lu * g.uy + lv * g.vy };
+  }
+  // Distance from a point to ellipse curve (approx via scaling projection).
+  function ellipseProjectAndDist(g, x, y) {
+    const { u, v } = ellipseLocal(g, x, y);
+    const k = Math.sqrt((u * u) / (g.a * g.a) + (v * v) / (g.b * g.b));
+    if (k < 1e-9) return { dist: g.b, px: g.cx + g.a * g.ux, py: g.cy + g.a * g.uy };
+    const u2 = u / k, v2 = v / k;
+    const px = g.cx + u2 * g.ux + v2 * g.vx;
+    const py = g.cy + u2 * g.uy + v2 * g.vy;
+    return { dist: Math.hypot(x - px, y - py), px, py };
+  }
+  function circleAngle(g, x, y) {
+    return Math.atan2(y - g.cy, x - g.cx);
+  }
+  function circlePointAtAngle(g, t) {
+    return { x: g.cx + g.r * Math.cos(t), y: g.cy + g.r * Math.sin(t) };
+  }
+
+  // ---------- Intersections ----------
+  // Each returns an array of {x, y} points where the two entities meet.
+  function lineLineIntersection(p1, p2, p3, p4) {
+    const dx1 = p2.x - p1.x, dy1 = p2.y - p1.y;
+    const dx2 = p4.x - p3.x, dy2 = p4.y - p3.y;
+    const denom = dx1 * dy2 - dy1 * dx2;
+    if (Math.abs(denom) < 1e-9) return [];
+    const t = ((p3.x - p1.x) * dy2 - (p3.y - p1.y) * dx2) / denom;
+    return [{ x: p1.x + t * dx1, y: p1.y + t * dy1 }];
+  }
+  function lineCircleIntersection(p1, p2, center, r) {
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const A = dx * dx + dy * dy;
+    if (A < 1e-12) return [];
+    const B = 2 * ((p1.x - center.x) * dx + (p1.y - center.y) * dy);
+    const C = (p1.x - center.x) ** 2 + (p1.y - center.y) ** 2 - r * r;
+    const disc = B * B - 4 * A * C;
+    if (disc < 0) return [];
+    const sd = Math.sqrt(disc);
+    const t1 = (-B - sd) / (2 * A);
+    const t2 = (-B + sd) / (2 * A);
+    const pts = [{ x: p1.x + t1 * dx, y: p1.y + t1 * dy }];
+    if (sd > 1e-6) pts.push({ x: p1.x + t2 * dx, y: p1.y + t2 * dy });
+    return pts;
+  }
+  function circleCircleIntersection(c1, r1, c2, r2) {
+    const dx = c2.x - c1.x, dy = c2.y - c1.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1e-9) return [];
+    if (d > r1 + r2 + 1e-6) return [];
+    if (d < Math.abs(r1 - r2) - 1e-6) return [];
+    const a = (d * d + r1 * r1 - r2 * r2) / (2 * d);
+    const h2 = r1 * r1 - a * a;
+    if (h2 < 0) return [];
+    const h = Math.sqrt(h2);
+    const mx = c1.x + a * dx / d, my = c1.y + a * dy / d;
+    const px = -dy / d, py = dx / d;
+    if (h < 1e-6) return [{ x: mx, y: my }];
+    return [{ x: mx + h * px, y: my + h * py },
+            { x: mx - h * px, y: my - h * py }];
+  }
+  function lineEllipseIntersection(p1, p2, ellipse) {
+    const g = ellipseGeom(ellipse);
+    if (!g) return [];
+    const toLocal = (p) => ({
+      x: (p.x - g.cx) * g.ux + (p.y - g.cy) * g.uy,
+      y: (p.x - g.cx) * g.vx + (p.y - g.cy) * g.vy,
+    });
+    const fromLocal = (lp) => ({
+      x: g.cx + lp.x * g.ux + lp.y * g.vx,
+      y: g.cy + lp.x * g.uy + lp.y * g.vy,
+    });
+    const lp1 = toLocal(p1), lp2 = toLocal(p2);
+    const ldx = lp2.x - lp1.x, ldy = lp2.y - lp1.y;
+    const A = (ldx * ldx) / (g.a * g.a) + (ldy * ldy) / (g.b * g.b);
+    if (A < 1e-12) return [];
+    const B = 2 * (lp1.x * ldx / (g.a * g.a) + lp1.y * ldy / (g.b * g.b));
+    const C = (lp1.x * lp1.x) / (g.a * g.a) + (lp1.y * lp1.y) / (g.b * g.b) - 1;
+    const disc = B * B - 4 * A * C;
+    if (disc < 0) return [];
+    const sd = Math.sqrt(disc);
+    const t1 = (-B - sd) / (2 * A), t2 = (-B + sd) / (2 * A);
+    const r = [fromLocal({ x: lp1.x + t1 * ldx, y: lp1.y + t1 * ldy })];
+    if (sd > 1e-6) r.push(fromLocal({ x: lp1.x + t2 * ldx, y: lp1.y + t2 * ldy }));
+    return r;
+  }
+  // Numerical (sample the ellipse, find sign changes of the signed distance to
+  // the other curve). Plenty accurate for diagram-sized shapes.
+  function sampledEllipseIntersection(ellipse, signedFn) {
+    const g = ellipseGeom(ellipse);
+    if (!g) return [];
+    const N = 360;
+    const pts = [];
+    let prev = null;
+    for (let i = 0; i <= N; i++) {
+      const t = (i / N) * 2 * Math.PI;
+      const p = ellipsePointAtAngle(g, t);
+      const f = signedFn(p);
+      if (prev && Math.sign(f) !== Math.sign(prev.f) && f !== 0 && prev.f !== 0) {
+        const r = prev.f / (prev.f - f);
+        pts.push({
+          x: prev.p.x + r * (p.x - prev.p.x),
+          y: prev.p.y + r * (p.y - prev.p.y),
+        });
+      }
+      prev = { p, f };
+    }
+    return pts;
+  }
+  function circleEllipseIntersection(circle, ellipse) {
+    const gc = circleGeom(circle);
+    if (!gc) return [];
+    return sampledEllipseIntersection(ellipse, (p) =>
+      Math.hypot(p.x - gc.cx, p.y - gc.cy) - gc.r);
+  }
+  function ellipseEllipseIntersection(e1, e2) {
+    const g2 = ellipseGeom(e2);
+    if (!g2) return [];
+    return sampledEllipseIntersection(e1, (p) => {
+      const dx = p.x - g2.cx, dy = p.y - g2.cy;
+      const lu = dx * g2.ux + dy * g2.uy;
+      const lv = dx * g2.vx + dy * g2.vy;
+      return (lu * lu) / (g2.a * g2.a) + (lv * lv) / (g2.b * g2.b) - 1;
+    });
+  }
+  function refPoints(ref) {
+    // Resolves a {kind, id} into the concrete entity needed for intersection
+    // helpers. Returns null if any underlying vertex is missing.
+    if (ref.kind === 'edge') {
+      const e = findEdgeById(ref.id);
+      if (!e) return null;
+      const a = findVertexById(e.v1), b = findVertexById(e.v2);
+      if (!a || !b) return null;
+      return { kind: 'edge', a, b };
+    }
+    if (ref.kind === 'circle') {
+      const c = findCircleById(ref.id);
+      if (!c) return null;
+      const g = circleGeom(c);
+      if (!g) return null;
+      return { kind: 'circle', circle: c, g };
+    }
+    if (ref.kind === 'ellipse') {
+      const e = findEllipseById(ref.id);
+      if (!e) return null;
+      const g = ellipseGeom(e);
+      if (!g) return null;
+      return { kind: 'ellipse', ellipse: e, g };
+    }
+    return null;
+  }
+  function computeIntersections(ref1, ref2) {
+    const r1 = refPoints(ref1), r2 = refPoints(ref2);
+    if (!r1 || !r2) return [];
+    const ORDER = { edge: 0, circle: 1, ellipse: 2 };
+    let a = r1, b = r2;
+    if (ORDER[a.kind] > ORDER[b.kind]) [a, b] = [b, a];
+    if (a.kind === 'edge' && b.kind === 'edge')
+      return lineLineIntersection(a.a, a.b, b.a, b.b);
+    if (a.kind === 'edge' && b.kind === 'circle')
+      return lineCircleIntersection(a.a, a.b, { x: b.g.cx, y: b.g.cy }, b.g.r);
+    if (a.kind === 'edge' && b.kind === 'ellipse')
+      return lineEllipseIntersection(a.a, a.b, b.ellipse);
+    if (a.kind === 'circle' && b.kind === 'circle')
+      return circleCircleIntersection(
+        { x: a.g.cx, y: a.g.cy }, a.g.r, { x: b.g.cx, y: b.g.cy }, b.g.r);
+    if (a.kind === 'circle' && b.kind === 'ellipse')
+      return circleEllipseIntersection(a.circle, b.ellipse);
+    if (a.kind === 'ellipse' && b.kind === 'ellipse')
+      return ellipseEllipseIntersection(a.ellipse, b.ellipse);
+    return [];
+  }
+
+  // Returns all curve/edge references "near" the given point — used as the
+  // candidate set when looking for an intersection at a click.
+  function nearbyRefs(x, y) {
+    const refs = [];
+    for (const c of state.circles) {
+      const g = circleGeom(c);
+      if (!g) continue;
+      const d = Math.hypot(x - g.cx, y - g.cy);
+      if (Math.abs(d - g.r) <= CURVE_SNAP) refs.push({ kind: 'circle', id: c.id });
+    }
+    for (const el of state.ellipses) {
+      const g = ellipseGeom(el);
+      if (!g) continue;
+      const pr = ellipseProjectAndDist(g, x, y);
+      if (pr.dist <= CURVE_SNAP) refs.push({ kind: 'ellipse', id: el.id });
+    }
+    for (const e of state.edges) {
+      const a = findVertexById(e.v1);
+      const b = findVertexById(e.v2);
+      if (!a || !b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1e-6) continue;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / len2));
+      const segX = a.x + t * dx, segY = a.y + t * dy;
+      if (Math.hypot(x - segX, y - segY) <= EDGE_SNAP) refs.push({ kind: 'edge', id: e.id });
+    }
+    return refs;
+  }
+  const INTERSECTION_SNAP = 14;
+  function nearestIntersectionAt(x, y) {
+    const refs = nearbyRefs(x, y);
+    if (refs.length < 2) return null;
+    let best = null;
+    for (let i = 0; i < refs.length; i++) {
+      for (let j = i + 1; j < refs.length; j++) {
+        for (const ip of computeIntersections(refs[i], refs[j])) {
+          const d = Math.hypot(x - ip.x, y - ip.y);
+          if (d <= INTERSECTION_SNAP && (!best || d < best.d)) {
+            best = { x: ip.x, y: ip.y, d, refA: refs[i], refB: refs[j] };
+          }
+        }
+      }
+    }
+    return best;
+  }
+  // Find nearest edge to a point (within EDGE_SNAP of the segment). Returns
+  // the projection onto the INFINITE line through the edge, so a constrained
+  // vertex can travel beyond the segment.
+  function nearestEdgeSnap(x, y) {
+    let best = null;
+    for (const e of state.edges) {
+      const a = findVertexById(e.v1);
+      const b = findVertexById(e.v2);
+      if (!a || !b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1e-6) continue;
+      const t = ((x - a.x) * dx + (y - a.y) * dy) / len2;
+      const tc = Math.max(0, Math.min(1, t));
+      const segX = a.x + tc * dx, segY = a.y + tc * dy;
+      const d = Math.hypot(x - segX, y - segY);
+      if (d <= EDGE_SNAP && (!best || d < best.off)) {
+        best = { id: e.id, x: a.x + t * dx, y: a.y + t * dy, off: d };
+      }
+    }
+    return best;
+  }
+  // Find nearest curve (circle or ellipse) to a point, returning snap info.
+  function nearestCurveSnap(x, y) {
+    let best = null;
+    for (const c of state.circles) {
+      const g = circleGeom(c);
+      if (!g) continue;
+      const d = Math.hypot(x - g.cx, y - g.cy);
+      const off = Math.abs(d - g.r);
+      if (off <= CURVE_SNAP && (!best || off < best.off)) {
+        const scale = d < 1e-6 ? 0 : g.r / d;
+        const px = g.cx + (x - g.cx) * scale;
+        const py = g.cy + (y - g.cy) * scale;
+        best = { kind: 'circle', id: c.id, x: px, y: py, off };
+      }
+    }
+    for (const e of state.ellipses) {
+      const g = ellipseGeom(e);
+      if (!g) continue;
+      const pr = ellipseProjectAndDist(g, x, y);
+      if (pr.dist <= CURVE_SNAP && (!best || pr.dist < best.off)) {
+        best = { kind: 'ellipse', id: e.id, x: pr.px, y: pr.py, off: pr.dist };
+      }
+    }
+    return best;
+  }
+  // Project a point onto its constraint curve (returns {x, y} or null).
+  function applyConstraint(vertex, x, y) {
+    if (!vertex.constraint) return null;
+    if (vertex.constraint.kind === 'circle') {
+      const c = findCircleById(vertex.constraint.id);
+      if (!c) { vertex.constraint = null; return null; }
+      const g = circleGeom(c);
+      if (!g) return null;
+      const d = Math.hypot(x - g.cx, y - g.cy);
+      if (d < 1e-6) return { x: g.cx + g.r, y: g.cy };
+      return { x: g.cx + (x - g.cx) * g.r / d, y: g.cy + (y - g.cy) * g.r / d };
+    }
+    if (vertex.constraint.kind === 'ellipse') {
+      const e = findEllipseById(vertex.constraint.id);
+      if (!e) { vertex.constraint = null; return null; }
+      const g = ellipseGeom(e);
+      if (!g) return null;
+      const pr = ellipseProjectAndDist(g, x, y);
+      return { x: pr.px, y: pr.py };
+    }
+    if (vertex.constraint.kind === 'edge') {
+      const e = findEdgeById(vertex.constraint.id);
+      if (!e) { vertex.constraint = null; return null; }
+      const a = findVertexById(e.v1);
+      const b = findVertexById(e.v2);
+      if (!a || !b) return null;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1e-6) return { x: a.x, y: a.y };
+      const t = ((x - a.x) * dx + (y - a.y) * dy) / len2;
+      return { x: a.x + t * dx, y: a.y + t * dy };
+    }
+    if (vertex.constraint.kind === 'intersection') {
+      const ips = computeIntersections(vertex.constraint.a, vertex.constraint.b);
+      if (!ips.length) return null;
+      let best = ips[0], bestD = Infinity;
+      for (const ip of ips) {
+        const d = (ip.x - x) ** 2 + (ip.y - y) ** 2;
+        if (d < bestD) { bestD = d; best = ip; }
+      }
+      return { x: best.x, y: best.y };
+    }
+    return null;
+  }
+  // True if this vertex is intersection-locked but its two curves don't
+  // currently meet. The vertex (and any incident edges/angles/curves) is
+  // hidden during this state — they reappear once the curves intersect again.
+  function intersectionVertexIsLost(v) {
+    if (!v.constraint || v.constraint.kind !== 'intersection') return false;
+    return computeIntersections(v.constraint.a, v.constraint.b).length === 0;
+  }
+  function isGhostVertex(vId) {
+    const v = findVertexById(vId);
+    if (!v) return true;
+    return intersectionVertexIsLost(v);
+  }
+  function edgeIsAlive(edge) {
+    return !!edge && !isGhostVertex(edge.v1) && !isGhostVertex(edge.v2);
+  }
+  function curveAlive(kind, id) {
+    if (kind === 'circle') {
+      const c = findCircleById(id);
+      return !!c && !isGhostVertex(c.centerId) && !isGhostVertex(c.perimId);
+    }
+    if (kind === 'ellipse') {
+      const e = findEllipseById(id);
+      return !!e && !isGhostVertex(e.centerId) && !isGhostVertex(e.p1Id) && !isGhostVertex(e.p2Id);
+    }
+    return false;
+  }
+  function isAngleAlive(a) {
+    if (isGhostVertex(a.vertexId)) return false;
+    if (a.e1 != null && !edgeIsAlive(findEdgeById(a.e1))) return false;
+    if (a.e2 != null && !edgeIsAlive(findEdgeById(a.e2))) return false;
+    const okRay = (rs) => !rs || rs.type !== 'tangent' || curveAlive(rs.curveKind, rs.curveId);
+    if (!okRay(a.ray1Source) || !okRay(a.ray2Source)) return false;
+    return true;
+  }
+  // Pre-render hook: walk all intersection vertices and update them to the
+  // nearest valid intersection of their two constraint targets so they track
+  // automatically when the underlying curves move.
+  function refreshIntersectionVertices() {
+    for (const v of state.vertices) {
+      if (!v.constraint || v.constraint.kind !== 'intersection') continue;
+      const ips = computeIntersections(v.constraint.a, v.constraint.b);
+      if (!ips.length) continue;
+      let best = ips[0], bestD = Infinity;
+      for (const ip of ips) {
+        const d = (ip.x - v.x) ** 2 + (ip.y - v.y) ** 2;
+        if (d < bestD) { bestD = d; best = ip; }
+      }
+      v.x = best.x; v.y = best.y;
+    }
+  }
+  // Returns true if a vertex lies on the given curve (within small tolerance).
+  function vertexOnCurve(v, kind, id) {
+    if (v.constraint && v.constraint.kind === kind && v.constraint.id === id) return true;
+    return false;
+  }
+  // True if vertex is a construction, constrained, or geometrically-on-curve
+  // point of the shape. Defers to curvePerimVertexIds so the diameter-circle
+  // case (where the first click ends up on the perimeter by construction but
+  // isn't tagged as perimId) is also recognized.
+  function isVertexOnCurve(vId, shapeKind, shapeId) {
+    return curvePerimVertexIds(shapeKind, shapeId).has(vId);
+  }
+  // All vertex IDs that lie on the given curve. Construction vertices, any
+  // vertex constrained to this curve, AND any vertex within a tight geometric
+  // tolerance of the curve (so the "other end" of a diameter circle, which is
+  // on the perimeter by construction but not registered, is also picked up).
+  const PERIM_TOL = 0.75;
+  function curvePerimVertexIds(kind, id) {
+    const set = new Set();
+    if (kind === 'circle') {
+      const c = findCircleById(id);
+      if (!c) return set;
+      set.add(c.perimId);
+      const g = circleGeom(c);
+      if (g) {
+        for (const v of state.vertices) {
+          if (v.id === c.centerId) continue;
+          if (Math.abs(Math.hypot(v.x - g.cx, v.y - g.cy) - g.r) <= PERIM_TOL) set.add(v.id);
+        }
+      }
+    } else {
+      const e = findEllipseById(id);
+      if (!e) return set;
+      set.add(e.p1Id); set.add(e.p2Id);
+      const g = ellipseGeom(e);
+      if (g) {
+        for (const v of state.vertices) {
+          if (v.id === e.centerId) continue;
+          const pr = ellipseProjectAndDist(g, v.x, v.y);
+          if (pr.dist <= PERIM_TOL) set.add(v.id);
+        }
+      }
+    }
+    for (const v of state.vertices) {
+      if (v.constraint && v.constraint.kind === kind && v.constraint.id === id) set.add(v.id);
+    }
+    return set;
+  }
+  function curveSharedPerimVertex(kind1, id1, kind2, id2) {
+    const a = curvePerimVertexIds(kind1, id1);
+    for (const vId of curvePerimVertexIds(kind2, id2)) {
+      if (a.has(vId)) return vId;
+    }
+    return null;
+  }
+  // Pick the candidate vertex whose total distance to the click points is
+  // smallest. Used to disambiguate when more than one shared perim vertex
+  // exists (e.g. a diameter line crossing its own circle).
+  function pickBestSharedVertex(candidates, pt1, pt2) {
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0];
+    let best = candidates[0], bestD = Infinity;
+    for (const vId of candidates) {
+      const v = findVertexById(vId);
+      if (!v) continue;
+      let d = 0;
+      if (pt1) d += Math.hypot(v.x - pt1.x, v.y - pt1.y);
+      if (pt2) d += Math.hypot(v.x - pt2.x, v.y - pt2.y);
+      if (d < bestD) { bestD = d; best = vId; }
+    }
+    return best;
+  }
+  function projectClickOnEdge(edge, x, y) {
+    if (!edge) return { x, y };
+    const a = findVertexById(edge.v1), b = findVertexById(edge.v2);
+    if (!a || !b) return { x, y };
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-6) return { x: a.x, y: a.y };
+    const t = ((x - a.x) * dx + (y - a.y) * dy) / len2;
+    return { x: a.x + t * dx, y: a.y + t * dy };
+  }
+  function projectClickOnCurve(kind, id, x, y) {
+    if (kind === 'circle') {
+      const c = findCircleById(id);
+      if (!c) return { x, y };
+      const g = circleGeom(c);
+      if (!g) return { x, y };
+      const d = Math.hypot(x - g.cx, y - g.cy);
+      if (d < 1e-6) return { x: g.cx + g.r, y: g.cy };
+      return { x: g.cx + (x - g.cx) * g.r / d, y: g.cy + (y - g.cy) * g.r / d };
+    }
+    const e = findEllipseById(id);
+    if (!e) return { x, y };
+    const g = ellipseGeom(e);
+    if (!g) return { x, y };
+    const pr = ellipseProjectAndDist(g, x, y);
+    return { x: pr.px, y: pr.py };
+  }
+  function hintFromClickPt(pt, vId) {
+    if (!pt) return null;
+    const v = findVertexById(vId);
+    if (!v) return null;
+    const dx = pt.x - v.x, dy = pt.y - v.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) return null;
+    return { dx: dx / len, dy: dy / len };
+  }
+
+  // Resolve a vertex-ID-based visibleArc into concrete angles so the visible
+  // portion of the curve tracks moving endpoints.
+  function resolveVisibleArc(visibleArc, kind, g) {
+    if (!visibleArc) return null;
+    const va = findVertexById(visibleArc.aId);
+    const vb = findVertexById(visibleArc.bId);
+    if (!va || !vb) return null;
+    if (kind === 'circle') {
+      return { start: circleAngle(g, va.x, va.y), end: circleAngle(g, vb.x, vb.y) };
+    }
+    return { start: ellipseParamAngle(g, va.x, va.y), end: ellipseParamAngle(g, vb.x, vb.y) };
+  }
+
+  // ---------- Curve path builders ----------
+  function circlePathD(g, visibleArc) {
+    if (!visibleArc) {
+      // Full circle as two arcs
+      return `M ${g.cx + g.r} ${g.cy} ` +
+             `A ${g.r} ${g.r} 0 1 1 ${g.cx - g.r} ${g.cy} ` +
+             `A ${g.r} ${g.r} 0 1 1 ${g.cx + g.r} ${g.cy}`;
+    }
+    const a = visibleArc.start, b = visibleArc.end;
+    const sx = g.cx + g.r * Math.cos(a);
+    const sy = g.cy + g.r * Math.sin(a);
+    const ex = g.cx + g.r * Math.cos(b);
+    const ey = g.cy + g.r * Math.sin(b);
+    // Sweep CCW from a to b (mathematical CCW = SVG sweep flag 1)
+    let sweep = (b - a) % (2 * Math.PI); if (sweep < 0) sweep += 2 * Math.PI;
+    const large = sweep > Math.PI ? 1 : 0;
+    return `M ${sx} ${sy} A ${g.r} ${g.r} 0 ${large} 1 ${ex} ${ey}`;
+  }
+  function ellipsePathD(g, visibleArc) {
+    const deg = g.theta * 180 / Math.PI;
+    if (!visibleArc) {
+      // Two-arc full ellipse (start at t=0 i.e. major-axis tip)
+      const p0 = ellipsePointAtAngle(g, 0);
+      const p1 = ellipsePointAtAngle(g, Math.PI);
+      return `M ${p0.x} ${p0.y} A ${g.a} ${g.b} ${deg} 1 1 ${p1.x} ${p1.y} ` +
+             `A ${g.a} ${g.b} ${deg} 1 1 ${p0.x} ${p0.y}`;
+    }
+    const a = visibleArc.start, b = visibleArc.end;
+    const s = ellipsePointAtAngle(g, a);
+    const e = ellipsePointAtAngle(g, b);
+    let sweep = (b - a) % (2 * Math.PI); if (sweep < 0) sweep += 2 * Math.PI;
+    const large = sweep > Math.PI ? 1 : 0;
+    return `M ${s.x} ${s.y} A ${g.a} ${g.b} ${deg} ${large} 1 ${e.x} ${e.y}`;
+  }
+
+  // ---------- Per-vertex angle levels (concentric radii) ----------
+  // Angular interval (CCW on the unit circle) that the rendered arc actually
+  // covers, accounting for reflex. Used to decide which angles visually
+  // collide and therefore need different concentric radii.
+  function angleAngularInterval(angle) {
+    const gm = angleGeom(angle);
+    if (!gm.ok) return null;
+    const abs = Math.abs(gm.delta);
+    const sweep = angle.reflex ? (2 * Math.PI - abs) : abs;
+    let start;
+    if (angle.reflex) {
+      start = gm.delta > 0 ? gm.a1 + gm.delta : gm.a1;
+    } else {
+      start = gm.delta > 0 ? gm.a1 : gm.a1 + gm.delta;
+    }
+    while (start < 0) start += 2 * Math.PI;
+    while (start >= 2 * Math.PI) start -= 2 * Math.PI;
+    return { start, sweep };
+  }
+  function intervalsOverlap(i1, i2, eps = 0.02) {
+    if (!i1 || !i2) return false;
+    const segs = (i) => {
+      const end = i.start + i.sweep;
+      if (end <= 2 * Math.PI) return [[i.start, end]];
+      return [[i.start, 2 * Math.PI], [0, end - 2 * Math.PI]];
+    };
+    const s1 = segs(i1), s2 = segs(i2);
+    for (const a of s1) for (const b of s2) {
+      if (a[0] + eps < b[1] && b[0] + eps < a[1]) return true;
+    }
+    return false;
+  }
+  function computeAngleLevels() {
+    const byV = new Map();
+    for (const a of state.angles) {
+      if (!byV.has(a.vertexId)) byV.set(a.vertexId, []);
+      byV.get(a.vertexId).push(a);
+    }
+    const intervals = new Map();
+    for (const a of state.angles) intervals.set(a.id, angleAngularInterval(a));
+    const levels = new Map();
+    for (const list of byV.values()) {
+      list.sort((x, y) => x.id - y.id);
+      for (const a of list) {
+        const conflict = new Set();
+        const aInt = intervals.get(a.id);
+        for (const o of list) {
+          if (o === a || o.id >= a.id) continue;
+          if (intervalsOverlap(aInt, intervals.get(o.id))) conflict.add(levels.get(o.id));
+        }
+        let lvl = 0;
+        while (conflict.has(lvl)) lvl++;
+        levels.set(a.id, lvl);
+      }
+    }
+    return levels;
+  }
+  function angleBaseRadius(a) {
+    return a.marker === 'right' ? RIGHT_ANGLE_R : ANGLE_R;
+  }
+  function angleRadiusForLevel(a, level) {
+    return angleBaseRadius(a) + level * ANGLE_RADIUS_STEP;
+  }
+
+  // ---------- Label positioning ----------
+  function anchorFor(kind, item) {
+    if (kind === 'vertex') return { x: item.x, y: item.y };
+    if (kind === 'edge') {
+      const a = findVertexById(item.v1);
+      const b = findVertexById(item.v2);
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+    if (kind === 'angle') {
+      const v = findVertexById(item.vertexId);
+      return { x: v.x, y: v.y };
+    }
+  }
+
+  function autoVertexLabelPos(v) {
+    let sx = 0, sy = 0;
+    for (const e of state.edges) {
+      let other = null;
+      if (e.v1 === v.id) other = findVertexById(e.v2);
+      else if (e.v2 === v.id) other = findVertexById(e.v1);
+      if (!other) continue;
+      const dx = other.x - v.x, dy = other.y - v.y;
+      const len = Math.hypot(dx, dy) || 1;
+      sx += dx / len; sy += dy / len;
+    }
+    for (const ang of state.angles) {
+      if (ang.vertexId !== v.id) continue;
+      const gm = angleGeom(ang);
+      if (!gm.ok) continue;
+      const bis = effectiveBisector(ang, gm);
+      sx += Math.cos(bis) * 0.5;
+      sy += Math.sin(bis) * 0.5;
+    }
+    // Push the label OUTWARD from any curve this vertex sits on. We add the
+    // INWARD direction (toward the curve's center) to the away-from-label sum
+    // so the final label position lands outside the curve's interior.
+    const pushFromCenter = (centerVId) => {
+      if (centerVId == null || centerVId === v.id) return;
+      const ctr = findVertexById(centerVId);
+      if (!ctr) return;
+      const dx = ctr.x - v.x, dy = ctr.y - v.y;
+      const len = Math.hypot(dx, dy) || 1;
+      sx += dx / len; sy += dy / len;
+    };
+    for (const c of state.circles) {
+      if (isVertexOnCurve(v.id, 'circle', c.id)) pushFromCenter(c.centerId);
+    }
+    for (const el of state.ellipses) {
+      if (isVertexOnCurve(v.id, 'ellipse', el.id)) pushFromCenter(el.centerId);
+    }
+    const dist = VERTEX_LABEL_DIST * state.tweaks.fontScale;
+    const mag = Math.hypot(sx, sy);
+    if (mag < 0.1) return { x: v.x, y: v.y - dist };
+    return { x: v.x - (sx / mag) * dist, y: v.y - (sy / mag) * dist };
+  }
+
+  function autoEdgeLabelPos(e) {
+    const a = findVertexById(e.v1);
+    const b = findVertexById(e.v2);
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    // Normal that points "up" (lower y) by default.
+    let nx = -dy / len, ny = dx / len;
+    if (ny > 0) { nx = -nx; ny = -ny; }
+    const off = EDGE_LABEL_OFFSET * state.tweaks.fontScale;
+    const cands = [
+      { sign: +1, x: mx + nx * off, y: my + ny * off, score: 0 },
+      { sign: -1, x: mx - nx * off, y: my - ny * off, score: 0 },
+    ];
+    // Angle markings on a side push the label to the other side.
+    for (const ang of state.angles) {
+      if (ang.e1 !== e.id && ang.e2 !== e.id) continue;
+      const gm = angleGeom(ang);
+      if (!gm.ok) continue;
+      const bis = effectiveBisector(ang, gm);
+      const dot = nx * Math.cos(bis) + ny * Math.sin(bis);
+      if (dot > 0.05) cands[0].score -= 1;
+      else if (dot < -0.05) cands[1].score -= 1;
+    }
+    // Penalize candidates that fall inside or very near a curve's interior.
+    for (const c of state.circles) {
+      const g = circleGeom(c);
+      if (!g) continue;
+      for (const cd of cands) {
+        const d = Math.hypot(cd.x - g.cx, cd.y - g.cy);
+        if (d < g.r - off * 0.5) cd.score -= 2;
+        else if (Math.abs(d - g.r) < off) cd.score -= 1;
+      }
+    }
+    for (const el of state.ellipses) {
+      const g = ellipseGeom(el);
+      if (!g) continue;
+      for (const cd of cands) {
+        const lp = ellipseLocal(g, cd.x, cd.y);
+        const k = (lp.u * lp.u) / (g.a * g.a) + (lp.v * lp.v) / (g.b * g.b);
+        if (k < 0.9) cd.score -= 2;
+        else if (Math.abs(Math.sqrt(k) - 1) * Math.min(g.a, g.b) < off) cd.score -= 1;
+      }
+    }
+    return cands[0].score >= cands[1].score
+      ? { x: cands[0].x, y: cands[0].y }
+      : { x: cands[1].x, y: cands[1].y };
+  }
+
+  function autoAngleLabelPos(a) {
+    const gm = angleGeom(a);
+    if (!gm.ok) return { x: 0, y: 0 };
+    const level = (currentAngleLevels && currentAngleLevels.get(a.id)) || 0;
+    const r = angleRadiusForLevel(a, level);
+    const off = ANGLE_LABEL_OFFSET * state.tweaks.fontScale;
+    const bis = effectiveBisector(a, gm);
+    return {
+      x: gm.vx + (r + off) * Math.cos(bis),
+      y: gm.vy + (r + off) * Math.sin(bis),
+    };
+  }
+  // Updated during render(); used by label position math.
+  let currentAngleLevels = new Map();
+
+  function autoLabelPos(kind, item) {
+    if (kind === 'vertex') return autoVertexLabelPos(item);
+    if (kind === 'edge')   return autoEdgeLabelPos(item);
+    if (kind === 'angle')  return autoAngleLabelPos(item);
+  }
+
+  function labelPos(kind, item) {
+    if (item.labelOffset) {
+      const a = anchorFor(kind, item);
+      return { x: a.x + item.labelOffset.dx, y: a.y + item.labelOffset.dy };
+    }
+    return autoLabelPos(kind, item);
+  }
+
+  function approxLabelBBox(text, fontSize) {
+    const charW = fontSize * 0.62;
+    const w = Math.max(text.length, 1) * charW + 6;
+    const h = fontSize + 4;
+    return { w, h };
+  }
+
+  // For edge labels: first token italic-if-it-contains-letters, the rest (units) roman.
+  // Returns [{text, italic}, ...].
+  function edgeLabelParts(label) {
+    if (!label) return [];
+    const spaceIdx = label.indexOf(' ');
+    if (spaceIdx === -1) {
+      const italic = /[A-Za-zα-ωΑ-Ω]/.test(label);
+      return [{ text: label, italic }];
+    }
+    const first = label.slice(0, spaceIdx);
+    const rest = label.slice(spaceIdx); // includes leading space
+    const firstItalic = /[A-Za-zα-ωΑ-Ω]/.test(first);
+    return [
+      { text: first, italic: firstItalic },
+      { text: rest, italic: false },
+    ];
+  }
+
+  // Apply width + dash pattern from an item with {width, style} fields to an
+  // SVG element. Mirrors the per-edge logic so circles/ellipses share the
+  // same width and style options edges have.
+  function applyStrokeStyle(el, item) {
+    const w = (item.width != null ? item.width : DEFAULT_EDGE_WIDTH) * state.tweaks.lineScale;
+    el.setAttribute('stroke-width', w);
+    const styleKey = item.style || DEFAULT_EDGE_STYLE;
+    const def = EDGE_STYLES.find(s => s.key === styleKey);
+    if (def && def.dash) {
+      const dashScale = state.tweaks.lineScale;
+      const parts = def.dash.split(' ').map(d => Number(d) * dashScale).join(' ');
+      el.setAttribute('stroke-dasharray', parts);
+      if (styleKey === 'dotted') el.setAttribute('stroke-linecap', 'round');
+    } else {
+      el.removeAttribute('stroke-dasharray');
+      el.removeAttribute('stroke-linecap');
+    }
+  }
+
+  // ---------- Rendering ----------
+  function makeLabel(kind, id, displayText, className, fontSize, parts) {
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('class', 'label-group');
+    g.setAttribute('data-label-kind', kind);
+    g.setAttribute('data-label-id', id);
+
+    const bbox = approxLabelBBox(displayText, fontSize);
+    const hit = document.createElementNS(SVG_NS, 'rect');
+    hit.setAttribute('class', 'label-hit');
+    hit.setAttribute('x', -bbox.w / 2);
+    hit.setAttribute('y', -bbox.h / 2);
+    hit.setAttribute('width', bbox.w);
+    hit.setAttribute('height', bbox.h);
+    g.appendChild(hit);
+
+    const t = document.createElementNS(SVG_NS, 'text');
+    t.setAttribute('class', className);
+    t.setAttribute('x', 0);
+    t.setAttribute('y', 0);
+    t.setAttribute('font-size', fontSize);
+    if (parts && parts.length) {
+      for (const p of parts) {
+        const ts = document.createElementNS(SVG_NS, 'tspan');
+        ts.setAttribute('font-style', p.italic ? 'italic' : 'normal');
+        ts.textContent = p.text;
+        t.appendChild(ts);
+      }
+    } else {
+      t.textContent = displayText;
+    }
+    g.appendChild(t);
+    return g;
+  }
+
+  // Choose forward direction (ex, ey) so the edge points toward the more "top-right" endpoint:
+  // primary score (x - y), tiebreak by smaller y (more up), then larger x (more right).
+  function preferredEdgeDir(a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    let ex = dx / len, ey = dy / len;
+    const eps = 1e-9;
+    const score = ex - ey; // top-rightness of (b - a)
+    let flip = false;
+    if (score < -eps) flip = true;
+    else if (score < eps) {
+      // tied: prefer ey < 0 (up)
+      if (ey > eps) flip = true;
+      else if (ey > -eps) {
+        // both ey ≈ 0: prefer ex > 0 (right)
+        if (ex < -eps) flip = true;
+      }
+    }
+    if (flip) { ex = -ex; ey = -ey; }
+    return { ex, ey };
+  }
+
+  function renderEdgeMarks(edge, parentG) {
+    if (!edge.ticks && !edge.arrows) return;
+    const a = findVertexById(edge.v1);
+    const b = findVertexById(edge.v2);
+    if (!a || !b) return;
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const baseEx = dx / len, baseEy = dy / len;
+    const baseNx = -baseEy, baseNy = baseEx;
+    const strokeW = ANGLE_BASE_STROKE * state.tweaks.lineScale;
+
+    const hasBoth = edge.ticks > 0 && edge.arrows > 0;
+    const groupGap = 7; // distance between the two groups' centers when both shown
+    const tickCenterOff = hasBoth ? -groupGap : 0;
+    const arrowCenterOff = hasBoth ? groupGap : 0;
+
+    if (edge.ticks > 0) {
+      const tickHalf = 5;
+      const spacing = 4;
+      const start = tickCenterOff - (edge.ticks - 1) * spacing / 2;
+      for (let i = 0; i < edge.ticks; i++) {
+        const off = start + i * spacing;
+        const cx = mx + baseEx * off;
+        const cy = my + baseEy * off;
+        const line = document.createElementNS(SVG_NS, 'line');
+        line.setAttribute('x1', cx + baseNx * tickHalf);
+        line.setAttribute('y1', cy + baseNy * tickHalf);
+        line.setAttribute('x2', cx - baseNx * tickHalf);
+        line.setAttribute('y2', cy - baseNy * tickHalf);
+        line.setAttribute('class', 'edge-mark');
+        line.setAttribute('stroke-width', strokeW);
+        line.setAttribute('stroke-linecap', 'round');
+        parentG.appendChild(line);
+      }
+    }
+    if (edge.arrows > 0) {
+      const { ex, ey } = preferredEdgeDir(a, b);
+      const nx = -ey, ny = ex;
+      const armLen = 5;
+      const armHalf = 4;
+      const spacing = 6;
+      // Block center stays at midpoint + arrowCenterOff along the EDGE,
+      // but chevrons stack along the arrow direction (which may be flipped).
+      const blockCx = mx + baseEx * arrowCenterOff;
+      const blockCy = my + baseEy * arrowCenterOff;
+      const start = -(edge.arrows - 1) * spacing / 2;
+      for (let i = 0; i < edge.arrows; i++) {
+        const off = start + i * spacing;
+        const cx = blockCx + ex * off;
+        const cy = blockCy + ey * off;
+        const tipX = cx + ex * armLen;
+        const tipY = cy + ey * armLen;
+        const upX = cx + nx * armHalf;
+        const upY = cy + ny * armHalf;
+        const dnX = cx - nx * armHalf;
+        const dnY = cy - ny * armHalf;
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('d', `M ${upX} ${upY} L ${tipX} ${tipY} L ${dnX} ${dnY}`);
+        path.setAttribute('class', 'edge-mark');
+        path.setAttribute('stroke-width', strokeW);
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        parentG.appendChild(path);
+      }
+    }
+  }
+
+  function maybeTether(item, kind, pos) {
+    if (!item.labelOffset) return null;
+    const a = anchorFor(kind, item);
+    const dist = Math.hypot(pos.x - a.x, pos.y - a.y);
+    // Only show tether when meaningfully far from auto position
+    const auto = autoLabelPos(kind, item);
+    const distFromAuto = Math.hypot(pos.x - auto.x, pos.y - auto.y);
+    if (distFromAuto < 4) return null;
+    if (dist < 30) return null;
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+    line.setAttribute('x2', pos.x); line.setAttribute('y2', pos.y);
+    line.setAttribute('class', 'label-tether');
+    return line;
+  }
+
+  function render() {
+    // Step 1: pull every intersection-locked vertex to the nearest valid
+    // intersection of its two constraint targets before computing geometry.
+    refreshIntersectionVertices();
+    // Curves (circles, ellipses) — drawn below edges
+    curvesLayer.innerHTML = '';
+    for (const c of state.circles) {
+      if (isGhostVertex(c.centerId) || isGhostVertex(c.perimId)) continue;
+      const g = circleGeom(c);
+      if (!g) continue;
+      const d = circlePathD(g, resolveVisibleArc(c.visibleArc, 'circle', g));
+      const group = document.createElementNS(SVG_NS, 'g');
+      group.setAttribute('data-circle-id', c.id);
+      let cls = 'curve-group';
+      if (isSelected('circle', c.id) || isToolTargetCurve('circle', c.id)) cls += ' selected';
+      if (c.hidden) cls += ' hidden';
+      if (state.menu && state.menu.kind === 'circle' && state.menu.id === c.id) cls += ' revealed';
+      group.setAttribute('class', cls);
+      const hit = document.createElementNS(SVG_NS, 'path');
+      hit.setAttribute('d', d);
+      hit.setAttribute('class', 'curve-hit');
+      group.appendChild(hit);
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('class', 'curve');
+      applyStrokeStyle(path, c);
+      if (c.color) path.style.stroke = c.color;
+      group.appendChild(path);
+      curvesLayer.appendChild(group);
+    }
+    for (const e of state.ellipses) {
+      if (isGhostVertex(e.centerId) || isGhostVertex(e.p1Id) || isGhostVertex(e.p2Id)) continue;
+      const g = ellipseGeom(e);
+      if (!g) continue;
+      const d = ellipsePathD(g, resolveVisibleArc(e.visibleArc, 'ellipse', g));
+      const group = document.createElementNS(SVG_NS, 'g');
+      group.setAttribute('data-ellipse-id', e.id);
+      let cls = 'curve-group';
+      if (isSelected('ellipse', e.id) || isToolTargetCurve('ellipse', e.id)) cls += ' selected';
+      if (e.hidden) cls += ' hidden';
+      if (state.menu && state.menu.kind === 'ellipse' && state.menu.id === e.id) cls += ' revealed';
+      group.setAttribute('class', cls);
+      const hit = document.createElementNS(SVG_NS, 'path');
+      hit.setAttribute('d', d);
+      hit.setAttribute('class', 'curve-hit');
+      group.appendChild(hit);
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('class', 'curve');
+      applyStrokeStyle(path, e);
+      if (e.color) path.style.stroke = e.color;
+      group.appendChild(path);
+      curvesLayer.appendChild(group);
+    }
+
+    // Edges
+    edgesLayer.innerHTML = '';
+    for (const e of state.edges) {
+      if (!edgeIsAlive(e)) continue;
+      const a = findVertexById(e.v1);
+      const b = findVertexById(e.v2);
+      if (!a || !b) continue;
+
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('data-edge-id', e.id);
+      let cls = 'edge-group';
+      if (isSelected('edge', e.id)) cls += ' selected';
+      if (e.hidden) cls += ' hidden';
+      if (state.menu && state.menu.kind === 'edge' && state.menu.id === e.id) cls += ' revealed';
+      g.setAttribute('class', cls);
+
+      const hit = document.createElementNS(SVG_NS, 'line');
+      hit.setAttribute('x1', a.x); hit.setAttribute('y1', a.y);
+      hit.setAttribute('x2', b.x); hit.setAttribute('y2', b.y);
+      hit.setAttribute('class', 'edge-hit');
+      g.appendChild(hit);
+
+      const line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+      line.setAttribute('class', 'edge');
+      const scaledWidth = e.width * state.tweaks.lineScale;
+      line.setAttribute('stroke-width', scaledWidth);
+      if (e.color) line.style.stroke = e.color;
+      const styleDef = EDGE_STYLES.find(s => s.key === e.style);
+      if (styleDef && styleDef.dash) {
+        const dashScale = state.tweaks.lineScale;
+        const dashParts = styleDef.dash.split(' ').map(d => Number(d) * dashScale).join(' ');
+        line.setAttribute('stroke-dasharray', dashParts);
+        if (e.style === 'dotted') line.setAttribute('stroke-linecap', 'round');
+      }
+      g.appendChild(line);
+
+      renderEdgeMarks(e, g);
+
+      if (e.label) {
+        const pos = labelPos('edge', e);
+        const tether = maybeTether(e, 'edge', pos);
+        if (tether) g.appendChild(tether);
+        const parts = edgeLabelParts(e.label);
+        const lbl = makeLabel('edge', e.id, e.label, 'edge-label', edgeFontSize(), parts);
+        lbl.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
+        if (e.labelColor) {
+          const textEl = lbl.querySelector('text');
+          if (textEl) textEl.style.fill = e.labelColor;
+        }
+        g.appendChild(lbl);
+      }
+      edgesLayer.appendChild(g);
+    }
+
+    // Angles
+    currentAngleLevels = computeAngleLevels();
+    anglesLayer.innerHTML = '';
+    for (const a of state.angles) {
+      if (!isAngleAlive(a)) continue;
+      const gm = angleGeom(a);
+      if (!gm.ok) continue;
+      const level = currentAngleLevels.get(a.id) || 0;
+      const r = angleRadiusForLevel(a, level);
+      const stroke = ANGLE_BASE_STROKE * state.tweaks.lineScale;
+
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('data-angle-id', a.id);
+      let cls = 'angle-group';
+      if (isSelected('angle', a.id)) cls += ' selected';
+      g.setAttribute('class', cls);
+
+      const applyColor = (el, fillToo) => {
+        if (a.color) {
+          el.style.stroke = a.color;
+          if (fillToo) el.style.fill = a.color;
+        }
+      };
+      if (a.marker === 'arc') {
+        const d = buildArcPath(gm, r, a.reflex);
+        const hit = document.createElementNS(SVG_NS, 'path');
+        hit.setAttribute('d', d);
+        hit.setAttribute('class', 'angle-hit-stroke');
+        g.appendChild(hit);
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('class', 'angle');
+        path.setAttribute('stroke-width', stroke);
+        applyColor(path, false);
+        g.appendChild(path);
+      } else if (a.marker === 'right') {
+        const d = buildSquarePath(gm, r);
+        const hit = document.createElementNS(SVG_NS, 'path');
+        hit.setAttribute('d', d);
+        hit.setAttribute('class', 'angle-hit-stroke');
+        g.appendChild(hit);
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('class', 'angle');
+        path.setAttribute('stroke-width', stroke);
+        applyColor(path, false);
+        g.appendChild(path);
+      } else {
+        const c = angleMarkerCenter(a, gm, r);
+        const hitR = MARKER_SIZE + 6;
+        const hit = document.createElementNS(SVG_NS, 'circle');
+        hit.setAttribute('cx', c.x); hit.setAttribute('cy', c.y);
+        hit.setAttribute('r', hitR);
+        hit.setAttribute('class', 'angle-hit-fill');
+        g.appendChild(hit);
+        if (a.marker === 'cross') {
+          const path = document.createElementNS(SVG_NS, 'path');
+          path.setAttribute('d', buildCrossPath(c.x, c.y, MARKER_SIZE));
+          path.setAttribute('class', 'angle');
+          path.setAttribute('stroke-width', stroke);
+          path.setAttribute('stroke-linecap', 'round');
+          applyColor(path, false);
+          g.appendChild(path);
+        } else {
+          const circ = document.createElementNS(SVG_NS, 'circle');
+          circ.setAttribute('cx', c.x); circ.setAttribute('cy', c.y);
+          circ.setAttribute('r', MARKER_SIZE);
+          circ.setAttribute('class', 'angle' + (a.marker === 'closed' ? ' filled' : ''));
+          circ.setAttribute('stroke-width', stroke);
+          applyColor(circ, a.marker === 'closed');
+          g.appendChild(circ);
+        }
+      }
+
+      const shown = displayAngleLabel(a.label);
+      if (shown) {
+        const pos = labelPos('angle', a);
+        const tether = maybeTether(a, 'angle', pos);
+        if (tether) g.appendChild(tether);
+        const lbl = makeLabel('angle', a.id, shown, 'angle-label', angleFontSize());
+        lbl.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
+        if (a.labelColor) {
+          const textEl = lbl.querySelector('text');
+          if (textEl) textEl.style.fill = a.labelColor;
+        }
+        g.appendChild(lbl);
+      }
+      anglesLayer.appendChild(g);
+    }
+
+    // Vertices
+    const toolPickedVertices = toolPickedVertexIds();
+    verticesLayer.innerHTML = '';
+    for (const v of state.vertices) {
+      if (intersectionVertexIsLost(v)) continue;
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('data-vertex-id', v.id);
+      let cls = 'vertex-group';
+      if (v.hidden) cls += ' hidden';
+      if (state.menu && state.menu.kind === 'vertex' && state.menu.id === v.id) cls += ' revealed';
+      if (isSelected('vertex', v.id) || toolPickedVertices.has(v.id)) cls += ' selected';
+      g.setAttribute('class', cls);
+
+      const hit = document.createElementNS(SVG_NS, 'circle');
+      hit.setAttribute('cx', v.x); hit.setAttribute('cy', v.y);
+      hit.setAttribute('r', HIT_R);
+      hit.setAttribute('class', 'vertex-hit');
+      g.appendChild(hit);
+
+      const c = document.createElementNS(SVG_NS, 'circle');
+      c.setAttribute('cx', v.x); c.setAttribute('cy', v.y);
+      c.setAttribute('r', VERTEX_R);
+      c.setAttribute('class', 'vertex');
+      if (v.color) c.style.fill = v.color;
+      g.appendChild(c);
+
+      if (v.label) {
+        const pos = labelPos('vertex', v);
+        const tether = maybeTether(v, 'vertex', pos);
+        if (tether) g.appendChild(tether);
+        const lbl = makeLabel('vertex', v.id, v.label, 'vertex-label', vertexFontSize());
+        lbl.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
+        if (v.labelColor) {
+          const textEl = lbl.querySelector('text');
+          if (textEl) textEl.style.fill = v.labelColor;
+        }
+        g.appendChild(lbl);
+      }
+      verticesLayer.appendChild(g);
+    }
+  }
+
+  function clearSnapGuides() { snapGuidesLayer.innerHTML = ''; }
+  function drawSnapGuides(guides) {
+    clearSnapGuides();
+    for (const g of guides) {
+      const line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', g.x1); line.setAttribute('y1', g.y1);
+      line.setAttribute('x2', g.x2); line.setAttribute('y2', g.y2);
+      line.setAttribute('class', 'snap-guide');
+      snapGuidesLayer.appendChild(line);
+    }
+  }
+
+  // ---------- Hit testing ----------
+  function getEventLabel(evt) {
+    const g = evt.target.closest('g.label-group');
+    if (!g) return null;
+    return { kind: g.getAttribute('data-label-kind'), id: Number(g.getAttribute('data-label-id')) };
+  }
+  function getEventVertexId(evt) {
+    const g = evt.target.closest('g[data-vertex-id]');
+    return g ? Number(g.getAttribute('data-vertex-id')) : null;
+  }
+  function getEventEdgeId(evt) {
+    const g = evt.target.closest('g[data-edge-id]');
+    return g ? Number(g.getAttribute('data-edge-id')) : null;
+  }
+  function getEventAngleId(evt) {
+    const g = evt.target.closest('g[data-angle-id]');
+    return g ? Number(g.getAttribute('data-angle-id')) : null;
+  }
+  function getEventCircleId(evt) {
+    const g = evt.target.closest('g[data-circle-id]');
+    return g ? Number(g.getAttribute('data-circle-id')) : null;
+  }
+  function getEventEllipseId(evt) {
+    const g = evt.target.closest('g[data-ellipse-id]');
+    return g ? Number(g.getAttribute('data-ellipse-id')) : null;
+  }
+
+  // ---------- Pointer interaction ----------
+  let pointerState = null;
+
+  svg.addEventListener('pointerdown', (evt) => {
+    if (evt.button !== 0) return;
+    const wasMenuOpen = !!state.menu;
+    if (wasMenuOpen) closeMenu();
+    const pt = svgPoint(evt);
+
+    // Label drag takes priority over the underlying group's click.
+    const lbl = getEventLabel(evt);
+    if (lbl) {
+      const item = findItem(lbl.kind, lbl.id);
+      if (!item) return;
+      const anchor = anchorFor(lbl.kind, item);
+      const current = labelPos(lbl.kind, item);
+      pointerState = {
+        kind: 'label',
+        labelKind: lbl.kind, labelId: lbl.id,
+        anchorX: anchor.x, anchorY: anchor.y,
+        startX: pt.x, startY: pt.y,
+        initialPosX: current.x, initialPosY: current.y,
+        dragging: false,
+        wasMenuOpen,
+      };
+      svg.setPointerCapture(evt.pointerId);
+      return;
+    }
+
+    const vid = getEventVertexId(evt);
+    const eid = vid === null ? getEventEdgeId(evt) : null;
+    const aid = (vid === null && eid === null) ? getEventAngleId(evt) : null;
+    const cid = (vid === null && eid === null && aid === null) ? getEventCircleId(evt) : null;
+    const elid = (vid === null && eid === null && aid === null && cid === null) ? getEventEllipseId(evt) : null;
+
+    if (vid !== null) {
+      const v = findVertexById(vid);
+      pointerState = {
+        kind: 'vertex',
+        vertexId: vid,
+        startX: pt.x, startY: pt.y,
+        offsetX: pt.x - v.x, offsetY: pt.y - v.y,
+        dragging: false,
+        wasMenuOpen,
+      };
+      svg.setPointerCapture(evt.pointerId);
+    } else if (eid !== null) {
+      pointerState = { kind: 'edge', edgeId: eid, wasMenuOpen };
+    } else if (aid !== null) {
+      pointerState = { kind: 'angle', angleId: aid, wasMenuOpen };
+    } else if (cid !== null) {
+      pointerState = { kind: 'curve', shapeKind: 'circle', shapeId: cid, wasMenuOpen };
+    } else if (elid !== null) {
+      pointerState = { kind: 'curve', shapeKind: 'ellipse', shapeId: elid, wasMenuOpen };
+    } else {
+      pointerState = {
+        kind: 'empty',
+        startX: pt.x, startY: pt.y,
+        startClientX: evt.clientX, startClientY: evt.clientY,
+        startPanX: state.panX, startPanY: state.panY,
+        moved: false,
+        panning: false,
+        wasMenuOpen,
+      };
+      svg.setPointerCapture(evt.pointerId);
+    }
+  });
+
+  svg.addEventListener('pointermove', (evt) => {
+    if (!pointerState) return;
+    const pt = svgPoint(evt);
+
+    if (pointerState.kind === 'empty') {
+      const sdx = evt.clientX - pointerState.startClientX;
+      const sdy = evt.clientY - pointerState.startClientY;
+      if (!pointerState.moved && Math.hypot(sdx, sdy) > DRAG_THRESHOLD) {
+        pointerState.moved = true;
+        pointerState.panning = true;
+        svg.classList.add('panning');
+      }
+      if (pointerState.panning) {
+        state.panX = pointerState.startPanX + sdx;
+        state.panY = pointerState.startPanY + sdy;
+        applyPan();
+      }
+      return;
+    }
+    if (pointerState.kind === 'vertex') {
+      const v = findVertexById(pointerState.vertexId);
+      if (!v) return;
+      if (!pointerState.dragging &&
+          Math.hypot(pt.x - pointerState.startX, pt.y - pointerState.startY) > DRAG_THRESHOLD) {
+        pointerState.dragging = true;
+      }
+      if (pointerState.dragging) {
+        const tx = pt.x - pointerState.offsetX;
+        const ty = pt.y - pointerState.offsetY;
+        if (v.constraint) {
+          const proj = applyConstraint(v, tx, ty);
+          if (proj) { v.x = proj.x; v.y = proj.y; }
+          else { v.x = tx; v.y = ty; }
+          clearSnapGuides();
+        } else {
+          const s = snap(tx, ty, v.id);
+          v.x = s.x; v.y = s.y;
+          drawSnapGuides(s.guides);
+        }
+        render();
+      }
+    }
+    if (pointerState.kind === 'label') {
+      const item = findItem(pointerState.labelKind, pointerState.labelId);
+      if (!item) return;
+      if (!pointerState.dragging &&
+          Math.hypot(pt.x - pointerState.startX, pt.y - pointerState.startY) > DRAG_THRESHOLD) {
+        pointerState.dragging = true;
+      }
+      if (pointerState.dragging) {
+        const newX = pointerState.initialPosX + (pt.x - pointerState.startX);
+        const newY = pointerState.initialPosY + (pt.y - pointerState.startY);
+        const auto = autoLabelPos(pointerState.labelKind, item);
+        if (Math.hypot(newX - auto.x, newY - auto.y) < LABEL_SNAP_BACK) {
+          item.labelOffset = null;
+        } else {
+          item.labelOffset = { dx: newX - pointerState.anchorX, dy: newY - pointerState.anchorY };
+        }
+        render();
+      }
+    }
+  });
+
+  svg.addEventListener('pointerup', (evt) => {
+    if (!pointerState) return;
+    const ps = pointerState;
+    pointerState = null;
+    clearSnapGuides();
+    svg.classList.remove('panning');
+
+    if (ps.kind === 'empty') {
+      if (ps.moved) return;
+      if (ps.wasMenuOpen) return;
+      const pt = svgPoint(evt);
+      // Arc-delete only accepts existing on-curve vertices; ignore empty clicks.
+      if (state.tool.name === 'arc-delete') return;
+      if (state.tool.name === 'angle') {
+        if (state.selection) { clearSelection(); render(); }
+        return;
+      }
+      // In a non-vertex tool, clicking empty acquires a (new) vertex for the tool.
+      if (state.tool.name !== 'vertex') {
+        const v = addVertex(pt.x, pt.y);
+        advanceTool(v.id);
+        return;
+      }
+      if (state.selection) { clearSelection(); render(); return; }
+      addVertex(pt.x, pt.y);
+      return;
+    }
+    if (ps.kind === 'vertex') {
+      if (ps.dragging) return;
+      if (ps.wasMenuOpen) return;
+      if (state.tool.name === 'angle') return; // angle tool doesn't pick vertices
+      if (state.tool.name !== 'vertex') {
+        advanceTool(ps.vertexId);
+        return;
+      }
+      handleVertexClick(ps.vertexId);
+      return;
+    }
+    if (ps.kind === 'edge') {
+      if (ps.wasMenuOpen) return;
+      if (state.tool.name === 'angle') {
+        const pt = svgPoint(evt);
+        const proj = projectClickOnEdge(findEdgeById(ps.edgeId), pt.x, pt.y);
+        handleAngleToolPick('edge', ps.edgeId, null, null, proj);
+        return;
+      }
+      if (state.tool.name !== 'vertex') return;
+      // Vertex tool: clicking an edge places a new vertex on that line (or at
+      // an intersection if one is nearby). Use the angle tool to pick edges
+      // for angle creation.
+      const pt = svgPoint(evt);
+      if (state.selection) clearSelection();
+      addVertex(pt.x, pt.y);
+      return;
+    }
+    if (ps.kind === 'angle') {
+      if (ps.wasMenuOpen) return;
+      if (state.tool.name === 'angle') return;
+      if (state.tool.name !== 'vertex') return;
+      handleAngleClick(ps.angleId);
+      return;
+    }
+    if (ps.kind === 'curve') {
+      if (ps.wasMenuOpen) return;
+      const pt = svgPoint(evt);
+      if (state.tool.name === 'arc-delete') {
+        // Only accept clicks on the target curve; add a vertex on it.
+        const td = state.tool.data;
+        if (ps.shapeKind === td.shapeKind && ps.shapeId === td.shapeId) {
+          const v = addVertex(pt.x, pt.y);
+          advanceTool(v.id);
+        }
+        return;
+      }
+      if (state.tool.name === 'angle') {
+        const proj = projectClickOnCurve(ps.shapeKind, ps.shapeId, pt.x, pt.y);
+        handleAngleToolPick('curve', null, ps.shapeKind, ps.shapeId, proj);
+        return;
+      }
+      if (state.tool.name !== 'vertex') {
+        const v = addVertex(pt.x, pt.y);
+        advanceTool(v.id);
+        return;
+      }
+      // Vertex tool: clear any selection, then add a vertex on the perimeter.
+      if (state.selection) { clearSelection(); render(); return; }
+      addVertex(pt.x, pt.y);
+      return;
+    }
+    if (ps.kind === 'label') {
+      if (ps.dragging) return;
+      if (ps.wasMenuOpen) return;
+      if (state.tool.name === 'angle') {
+        if (ps.labelKind === 'edge') {
+          const pt = svgPoint(evt);
+          const proj = projectClickOnEdge(findEdgeById(ps.labelId), pt.x, pt.y);
+          handleAngleToolPick('edge', ps.labelId, null, null, proj);
+        }
+        return;
+      }
+      if (state.tool.name !== 'vertex') return;
+      // Click on label (no drag) → forward to parent for selection logic
+      if (ps.labelKind === 'vertex') handleVertexClick(ps.labelId);
+      else if (ps.labelKind === 'edge') handleEdgeClick(ps.labelId);
+      else if (ps.labelKind === 'angle') handleAngleClick(ps.labelId);
+      return;
+    }
+  });
+
+  svg.addEventListener('pointercancel', () => {
+    pointerState = null;
+    clearSnapGuides();
+    svg.classList.remove('panning');
+  });
+
+  // Scroll wheel zooms in/out, centered on the cursor so the world point
+  // under the pointer stays put.
+  svg.addEventListener('wheel', (evt) => {
+    evt.preventDefault();
+    const r = svg.getBoundingClientRect();
+    const sx = evt.clientX - r.left;
+    const sy = evt.clientY - r.top;
+    const worldX = (sx - state.panX) / state.zoom;
+    const worldY = (sy - state.panY) / state.zoom;
+    const factor = evt.deltaY < 0 ? 1.1 : 1 / 1.1;
+    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, state.zoom * factor));
+    if (newZoom === state.zoom) return;
+    state.zoom = newZoom;
+    state.panX = sx - worldX * newZoom;
+    state.panY = sy - worldY * newZoom;
+    applyPan();
+  }, { passive: false });
+
+  function handleVertexClick(id) {
+    const sel = state.selection;
+    if (!sel) { selectVertex(id); render(); return; }
+    if (sel.kind === 'vertex') {
+      if (sel.id === id) { clearSelection(); render(); return; }
+      addEdge(sel.id, id);
+      clearSelection();
+      render();
+      return;
+    }
+    // edge or angle selected → switch
+    selectVertex(id); render();
+  }
+  function handleEdgeClick(id) {
+    const sel = state.selection;
+    if (!sel) { selectEdge(id); render(); return; }
+    if (sel.kind === 'edge') {
+      if (sel.id === id) { clearSelection(); render(); return; }
+      const e1 = findEdgeById(sel.id);
+      const e2 = findEdgeById(id);
+      if (e1 && e2 && sharedVertexOf(e1, e2) !== null) {
+        addAngle(sel.id, id);
+        clearSelection();
+        render();
+        return;
+      }
+      selectEdge(id); render(); return;
+    }
+    // vertex or angle selected → switch
+    selectEdge(id); render();
+  }
+  function handleAngleClick(id) {
+    const sel = state.selection;
+    if (sel && sel.kind === 'angle' && sel.id === id) { clearSelection(); render(); return; }
+    selectAngle(id); render();
+  }
+  function handleCurveClick(kind, id) {
+    const sel = state.selection;
+    if (sel && sel.kind === kind && sel.id === id) { clearSelection(); render(); return; }
+    state.selection = { kind, id };
+    render();
+  }
+  // Angle tool: first pick selects; second pick (sharing a vertex with the
+  // first) creates an angle. Works for any combination of edges and curves.
+  // The click points are remembered so addEdgeCurveAngle / addCurveCurveAngle
+  // can pick which shared vertex to use AND which tangent side to draw on.
+  function handleAngleToolPick(kind, edgeId, curveKind, curveId, clickPt) {
+    const newSel = kind === 'edge'
+      ? { kind: 'edge', id: edgeId }
+      : { kind: curveKind, id: curveId };
+    const sel = state.selection;
+    if (!state.tool.data) state.tool.data = {};
+    if (!sel) {
+      state.selection = newSel;
+      state.tool.data.firstClickPt = clickPt || null;
+      render();
+      return;
+    }
+    if (sel.kind === newSel.kind && sel.id === newSel.id) {
+      clearSelection();
+      state.tool.data.firstClickPt = null;
+      render();
+      return;
+    }
+    const firstPt = state.tool.data.firstClickPt;
+    let made = false;
+    if (sel.kind === 'edge' && kind === 'edge') {
+      const e1 = findEdgeById(sel.id);
+      const e2 = findEdgeById(edgeId);
+      if (e1 && e2 && sharedVerticesEdgeEdge(e1, e2).length > 0) {
+        made = !!addAngle(sel.id, edgeId, firstPt, clickPt);
+      }
+    } else if (sel.kind === 'edge' && kind === 'curve') {
+      made = addEdgeCurveAngle(sel.id, curveKind, curveId, firstPt, clickPt);
+    } else if ((sel.kind === 'circle' || sel.kind === 'ellipse') && kind === 'edge') {
+      made = addEdgeCurveAngle(edgeId, sel.kind, sel.id, clickPt, firstPt);
+    } else if ((sel.kind === 'circle' || sel.kind === 'ellipse') && kind === 'curve') {
+      made = addCurveCurveAngle(sel.kind, sel.id, curveKind, curveId, firstPt, clickPt);
+    }
+    if (made) {
+      clearSelection();
+      state.tool.data.firstClickPt = null;
+      render();
+      return;
+    }
+    state.selection = newSel;
+    state.tool.data.firstClickPt = clickPt || null;
+    render();
+  }
+
+  // ---------- Multi-step tool dispatch ----------
+  function advanceTool(vertexId) {
+    const t = state.tool;
+    const data = t.data;
+    if (t.name === 'circle-r') {
+      if (t.step === 0) {
+        data.centerId = vertexId;
+        t.step = 1;
+      } else {
+        if (vertexId !== data.centerId) {
+          addCircle(data.centerId, vertexId);
+        }
+        resetTool();
+      }
+    } else if (t.name === 'circle-d') {
+      if (t.step === 0) {
+        data.p1Id = vertexId;
+        t.step = 1;
+      } else {
+        if (vertexId !== data.p1Id) {
+          const p1 = findVertexById(data.p1Id);
+          const p2 = findVertexById(vertexId);
+          if (p1 && p2) {
+            const cx = (p1.x + p2.x) / 2, cy = (p1.y + p2.y) / 2;
+            const center = {
+              id: state.nextId++,
+              label: nextLabelFor('vertex'),
+              x: cx, y: cy,
+              hidden: false, labelOffset: null, color: null, labelColor: null, constraint: null,
+            };
+            state.vertices.push(center);
+            addCircle(center.id, vertexId);
+          }
+        }
+        resetTool();
+      }
+    } else if (t.name === 'ellipse') {
+      if (t.step === 0) { data.centerId = vertexId; t.step = 1; }
+      else if (t.step === 1) { data.p1Id = vertexId; t.step = 2; }
+      else {
+        if (vertexId !== data.centerId && vertexId !== data.p1Id) {
+          addEllipse(data.centerId, data.p1Id, vertexId);
+        }
+        resetTool();
+      }
+    } else if (t.name === 'arc-delete') {
+      // Endpoints must be existing vertices on the target curve
+      // (construction vertices count too).
+      if (!isVertexOnCurve(vertexId, data.shapeKind, data.shapeId)) {
+        updateStatusHint();
+        return;
+      }
+      if (t.step === 0) { data.aId = vertexId; t.step = 1; updateStatusHint(); }
+      else {
+        if (vertexId !== data.aId) {
+          applyArcDeletion(data.shapeKind, data.shapeId, data.aId, vertexId, data.side);
+        }
+        resetTool();
+      }
+    } else {
+      resetTool();
+    }
+    updateStatusHint();
+    render();
+  }
+
+  function updateToolButtons() {
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+      const name = btn.getAttribute('data-tool');
+      btn.classList.toggle('active', name && state.tool.name === name);
+    });
+    // circle-btn shell highlights when either sub-tool active
+    const circleBtn = document.getElementById('circle-btn');
+    if (circleBtn) {
+      circleBtn.classList.toggle('active',
+        state.tool.name === 'circle-r' || state.tool.name === 'circle-d');
+    }
+    document.querySelectorAll('.tool-sub').forEach(s => {
+      s.classList.toggle('active', s.getAttribute('data-tool') === state.tool.name);
+    });
+  }
+
+  const STATUS_HINTS = {
+    vertex: 'Click empty/line/curve → vertex (snaps to lines & curves) · two vertices → edge',
+    angle:  'Angle: click an edge or curve, then a second one that shares a vertex',
+    'circle-r': ['Circle (R): click center', 'Circle (R): click radius point'],
+    'circle-d': ['Circle (D): click first diameter end', 'Circle (D): click second diameter end'],
+    'ellipse': ['Ellipse: click center', 'Ellipse: click first perimeter point', 'Ellipse: click second perimeter point'],
+  };
+  function updateStatusHint() {
+    const el = document.getElementById('status-hint');
+    if (!el) return;
+    const t = state.tool;
+    if (t.name === 'arc-delete') {
+      el.textContent = `Delete ${t.data.side} arc: click ${t.step === 0 ? 'first' : 'second'} point on the curve (must be a vertex on it)`;
+      return;
+    }
+    const h = STATUS_HINTS[t.name];
+    if (Array.isArray(h)) el.textContent = h[t.step] || h[0];
+    else el.textContent = h || '';
+  }
+
+  // ---------- Context menu ----------
+  svg.addEventListener('contextmenu', (evt) => {
+    const vid = getEventVertexId(evt);
+    const eid = vid === null ? getEventEdgeId(evt) : null;
+    const aid = (vid === null && eid === null) ? getEventAngleId(evt) : null;
+    const cid = (vid === null && eid === null && aid === null) ? getEventCircleId(evt) : null;
+    const elid = (vid === null && eid === null && aid === null && cid === null) ? getEventEllipseId(evt) : null;
+    if (vid === null && eid === null && aid === null && cid === null && elid === null) {
+      closeMenu();
+      return;
+    }
+    evt.preventDefault();
+    if (vid !== null) openVertexMenu(vid, evt);
+    else if (eid !== null) openEdgeMenu(eid, evt);
+    else if (aid !== null) openAngleMenu(aid, evt);
+    else if (cid !== null) openCurveMenu('circle', cid, evt);
+    else if (elid !== null) openCurveMenu('ellipse', elid, evt);
+  });
+
+  function closeMenu() {
+    state.menu = null;
+    ctxMenu.classList.remove('open');
+    ctxMenu.innerHTML = '';
+    render();
+  }
+  function positionMenu(evt) {
+    const wrapRect = wrap.getBoundingClientRect();
+    let x = evt.clientX - wrapRect.left + 2;
+    let y = evt.clientY - wrapRect.top + 2;
+    ctxMenu.style.left = x + 'px';
+    ctxMenu.style.top = y + 'px';
+    ctxMenu.classList.add('open');
+    requestAnimationFrame(() => {
+      const mRect = ctxMenu.getBoundingClientRect();
+      if (mRect.right > wrapRect.right) ctxMenu.style.left = (wrapRect.width - mRect.width - 6) + 'px';
+      if (mRect.bottom > wrapRect.bottom) ctxMenu.style.top = (wrapRect.height - mRect.height - 6) + 'px';
+    });
+  }
+  function menuTitle(text) {
+    const t = document.createElement('div');
+    t.className = 'menu-title';
+    t.textContent = text;
+    return t;
+  }
+  function menuLabelRow(initialValue, onInput) {
+    const row = document.createElement('div');
+    row.className = 'menu-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = 'Label';
+    row.appendChild(lbl);
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = initialValue;
+    input.addEventListener('input', () => {
+      const before = input.value;
+      const cursor = input.selectionStart;
+      const after = applyGreekSubst(before);
+      if (after !== before) {
+        const diff = before.length - after.length;
+        input.value = after;
+        const np = Math.max(0, cursor - diff);
+        input.setSelectionRange(np, np);
+      }
+      onInput(input.value);
+    });
+    row.appendChild(input);
+    row._input = input;
+    return row;
+  }
+  function menuSep() { const s = document.createElement('div'); s.className = 'menu-sep'; return s; }
+  function menuAction(text, onClick, danger) {
+    const b = document.createElement('button');
+    b.className = 'menu-action' + (danger ? ' danger' : '');
+    b.textContent = text;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function menuResetLabel(kind, item) {
+    if (!item.labelOffset) return null;
+    return menuAction('Reset label position', () => {
+      item.labelOffset = null;
+      render();
+      closeMenu();
+    });
+  }
+  const COLOR_SWATCHES = ['#111827','#ef4444','#f59e0b','#10b981','#2563eb','#7c3aed','#ec4899','#6b7280'];
+  function menuColorRow(label, currentColor, defaultColor, onSelect) {
+    const row = document.createElement('div');
+    row.className = 'menu-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    row.appendChild(lbl);
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.gap = '4px';
+    wrap.style.alignItems = 'center';
+    wrap.style.flex = '1';
+    wrap.style.flexWrap = 'wrap';
+    for (const swatch of COLOR_SWATCHES) {
+      const s = document.createElement('button');
+      s.style.width = '16px';
+      s.style.height = '16px';
+      s.style.padding = '0';
+      s.style.border = '1px solid #d1d5db';
+      s.style.borderRadius = '3px';
+      s.style.background = swatch;
+      s.style.cursor = 'pointer';
+      if (currentColor === swatch) s.style.outline = '2px solid #2563eb';
+      s.title = swatch;
+      s.addEventListener('click', () => { onSelect(swatch); });
+      wrap.appendChild(s);
+    }
+    const picker = document.createElement('input');
+    picker.type = 'color';
+    picker.value = currentColor || defaultColor || '#111827';
+    picker.style.width = '24px';
+    picker.style.height = '20px';
+    picker.style.padding = '0';
+    picker.style.border = '1px solid #d1d5db';
+    picker.addEventListener('input', () => onSelect(picker.value));
+    wrap.appendChild(picker);
+    const clear = document.createElement('button');
+    clear.textContent = '⟲';
+    clear.title = 'Reset';
+    clear.style.padding = '2px 5px';
+    clear.style.fontSize = '11px';
+    clear.style.background = 'none';
+    clear.style.border = '1px solid #d1d5db';
+    clear.style.borderRadius = '3px';
+    clear.style.cursor = 'pointer';
+    clear.addEventListener('click', () => onSelect(null));
+    wrap.appendChild(clear);
+    row.appendChild(wrap);
+    return row;
+  }
+  function menuSegRow(label, options, currentKey, onSelect) {
+    const row = document.createElement('div');
+    row.className = 'menu-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    row.appendChild(lbl);
+    const grp = document.createElement('div');
+    grp.className = 'seg-group';
+    options.forEach(opt => {
+      const b = document.createElement('button');
+      b.textContent = opt.label;
+      if (opt.key === currentKey) b.classList.add('active');
+      b.addEventListener('click', () => {
+        grp.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        onSelect(opt.key);
+      });
+      grp.appendChild(b);
+    });
+    row.appendChild(grp);
+    return row;
+  }
+
+  function openVertexMenu(id, evt) {
+    const v = findVertexById(id);
+    if (!v) return;
+    state.menu = { kind: 'vertex', id };
+    ctxMenu.innerHTML = '';
+    const title = menuTitle(`Vertex ${v.label || '(unlabeled)'}`);
+    ctxMenu.appendChild(title);
+
+    const labelRow = menuLabelRow(v.label, (val) => {
+      v.label = val;
+      title.textContent = `Vertex ${v.label || '(unlabeled)'}`;
+      render();
+    });
+    ctxMenu.appendChild(labelRow);
+
+    const hideRow = document.createElement('label');
+    hideRow.className = 'menu-row check';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!v.hidden;
+    cb.addEventListener('change', () => { v.hidden = cb.checked; render(); });
+    hideRow.appendChild(cb);
+    const txt = document.createElement('span');
+    txt.textContent = 'Hide dot (keep label)';
+    hideRow.appendChild(txt);
+    ctxMenu.appendChild(hideRow);
+
+    ctxMenu.appendChild(menuColorRow('Point', v.color, '#111827', (col) => { v.color = col; render(); }));
+    ctxMenu.appendChild(menuColorRow('Label', v.labelColor, '#111827', (col) => { v.labelColor = col; render(); }));
+
+    if (v.constraint) {
+      const label = v.constraint.kind === 'intersection'
+        ? 'Free from intersection'
+        : v.constraint.kind === 'edge' ? 'Free from line' : 'Free from curve';
+      ctxMenu.appendChild(menuAction(label, () => {
+        v.constraint = null; render(); closeMenu();
+      }));
+    }
+
+    const reset = menuResetLabel('vertex', v);
+    if (reset) ctxMenu.appendChild(reset);
+
+    ctxMenu.appendChild(menuSep());
+    ctxMenu.appendChild(menuAction('Delete vertex', () => { deleteVertex(id); closeMenu(); }, true));
+
+    positionMenu(evt);
+    render();
+    setTimeout(() => labelRow._input.select(), 0);
+  }
+
+  function openEdgeMenu(id, evt) {
+    const e = findEdgeById(id);
+    if (!e) return;
+    state.menu = { kind: 'edge', id };
+    ctxMenu.innerHTML = '';
+    const title = menuTitle(`Edge ${e.label || '(unlabeled)'}`);
+    ctxMenu.appendChild(title);
+
+    const labelRow = menuLabelRow(e.label, (val) => {
+      e.label = val;
+      title.textContent = `Edge ${e.label || '(unlabeled)'}`;
+      render();
+    });
+    ctxMenu.appendChild(labelRow);
+
+    const wRow = document.createElement('div');
+    wRow.className = 'menu-row';
+    const wLbl = document.createElement('label'); wLbl.textContent = 'Width'; wRow.appendChild(wLbl);
+    const wGroup = document.createElement('div');
+    wGroup.className = 'seg-group';
+    EDGE_WIDTHS.forEach(opt => {
+      const b = document.createElement('button');
+      b.textContent = opt.label;
+      if (Math.abs(e.width - opt.value) < 0.01) b.classList.add('active');
+      b.addEventListener('click', () => {
+        e.width = opt.value;
+        wGroup.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        render();
+      });
+      wGroup.appendChild(b);
+    });
+    wRow.appendChild(wGroup);
+    ctxMenu.appendChild(wRow);
+
+    const sRow = document.createElement('div');
+    sRow.className = 'menu-row';
+    const sLbl = document.createElement('label'); sLbl.textContent = 'Style'; sRow.appendChild(sLbl);
+    const sGroup = document.createElement('div');
+    sGroup.className = 'seg-group';
+    EDGE_STYLES.forEach(opt => {
+      const b = document.createElement('button');
+      b.textContent = opt.label;
+      if (e.style === opt.key) b.classList.add('active');
+      b.addEventListener('click', () => {
+        e.style = opt.key;
+        sGroup.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        render();
+      });
+      sGroup.appendChild(b);
+    });
+    sRow.appendChild(sGroup);
+    ctxMenu.appendChild(sRow);
+
+    const tickOpts = [
+      { key: 0, label: 'None' }, { key: 1, label: '|' }, { key: 2, label: '||' }, { key: 3, label: '|||' },
+    ];
+    ctxMenu.appendChild(menuSegRow('Ticks', tickOpts, e.ticks || 0, (k) => { e.ticks = k; render(); }));
+
+    const arrowOpts = [
+      { key: 0, label: 'None' }, { key: 1, label: '›' }, { key: 2, label: '››' }, { key: 3, label: '›››' },
+    ];
+    ctxMenu.appendChild(menuSegRow('Arrows', arrowOpts, e.arrows || 0, (k) => { e.arrows = k; render(); }));
+
+    const hideRow = document.createElement('label');
+    hideRow.className = 'menu-row check';
+    const hcb = document.createElement('input');
+    hcb.type = 'checkbox';
+    hcb.checked = !!e.hidden;
+    hcb.addEventListener('change', () => { e.hidden = hcb.checked; render(); });
+    hideRow.appendChild(hcb);
+    const htxt = document.createElement('span');
+    htxt.textContent = 'Hide line (keep label)';
+    hideRow.appendChild(htxt);
+    ctxMenu.appendChild(hideRow);
+
+    ctxMenu.appendChild(menuColorRow('Edge', e.color, '#111827', (col) => { e.color = col; render(); }));
+    ctxMenu.appendChild(menuColorRow('Label', e.labelColor, '#374151', (col) => { e.labelColor = col; render(); }));
+
+    const reset = menuResetLabel('edge', e);
+    if (reset) ctxMenu.appendChild(reset);
+
+    ctxMenu.appendChild(menuSep());
+    ctxMenu.appendChild(menuAction('Delete edge', () => { deleteEdge(id); closeMenu(); }, true));
+
+    positionMenu(evt);
+    render();
+    setTimeout(() => labelRow._input.select(), 0);
+  }
+
+  function openAngleMenu(id, evt) {
+    const a = findAngleById(id);
+    if (!a) return;
+    state.menu = { kind: 'angle', id };
+    ctxMenu.innerHTML = '';
+    const titleText = () => `Angle ${displayAngleLabel(a.label) || '(unlabeled)'}`;
+    const title = menuTitle(titleText());
+    ctxMenu.appendChild(title);
+
+    const labelRow = menuLabelRow(a.label, (val) => {
+      a.label = val;
+      title.textContent = titleText();
+      render();
+    });
+    ctxMenu.appendChild(labelRow);
+
+    const hint = document.createElement('div');
+    hint.className = 'hint-line';
+    hint.textContent = 'Tip: pure numbers get the chosen unit suffix. \\theta → θ, \\Theta → Θ.';
+    ctxMenu.appendChild(hint);
+
+    const markerOpts = [
+      { key: 'arc',    label: 'Arc' },
+      { key: 'right',  label: '∟' },
+      { key: 'open',   label: '○' },
+      { key: 'closed', label: '●' },
+      { key: 'cross',  label: '×' },
+    ];
+    ctxMenu.appendChild(menuSegRow('Marker', markerOpts, a.marker, (k) => { a.marker = k; render(); }));
+
+    const reflexRow = document.createElement('label');
+    reflexRow.className = 'menu-row check';
+    const rcb = document.createElement('input');
+    rcb.type = 'checkbox';
+    rcb.checked = !!a.reflex;
+    rcb.addEventListener('change', () => { a.reflex = rcb.checked; render(); });
+    reflexRow.appendChild(rcb);
+    const rtxt = document.createElement('span');
+    rtxt.textContent = 'Reflex (mark the long way around)';
+    reflexRow.appendChild(rtxt);
+    ctxMenu.appendChild(reflexRow);
+
+    ctxMenu.appendChild(menuColorRow('Marker', a.color, '#111827', (col) => { a.color = col; render(); }));
+    ctxMenu.appendChild(menuColorRow('Label', a.labelColor, '#111827', (col) => { a.labelColor = col; render(); }));
+
+    const reset = menuResetLabel('angle', a);
+    if (reset) ctxMenu.appendChild(reset);
+
+    ctxMenu.appendChild(menuSep());
+    ctxMenu.appendChild(menuAction('Delete angle', () => { deleteAngle(id); closeMenu(); }, true));
+
+    positionMenu(evt);
+    render();
+    setTimeout(() => labelRow._input.select(), 0);
+  }
+
+  // Bubble phase so SVG/canvas handlers run first and can read state.menu.
+  function openCurveMenu(kind, id, evt) {
+    const item = kind === 'circle' ? findCircleById(id) : findEllipseById(id);
+    if (!item) return;
+    state.menu = { kind, id };
+    ctxMenu.innerHTML = '';
+    const title = menuTitle(`${kind === 'circle' ? 'Circle' : 'Ellipse'}${item.label ? ' ' + item.label : ''}`);
+    ctxMenu.appendChild(title);
+
+    const labelRow = menuLabelRow(item.label, (val) => {
+      item.label = val;
+      render();
+    });
+    ctxMenu.appendChild(labelRow);
+
+    const wRow = document.createElement('div');
+    wRow.className = 'menu-row';
+    const wLbl = document.createElement('label'); wLbl.textContent = 'Width'; wRow.appendChild(wLbl);
+    const wGroup = document.createElement('div');
+    wGroup.className = 'seg-group';
+    EDGE_WIDTHS.forEach(opt => {
+      const b = document.createElement('button');
+      b.textContent = opt.label;
+      if (Math.abs((item.width ?? DEFAULT_EDGE_WIDTH) - opt.value) < 0.01) b.classList.add('active');
+      b.addEventListener('click', () => {
+        item.width = opt.value;
+        wGroup.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        render();
+      });
+      wGroup.appendChild(b);
+    });
+    wRow.appendChild(wGroup);
+    ctxMenu.appendChild(wRow);
+
+    const sRow = document.createElement('div');
+    sRow.className = 'menu-row';
+    const sLbl = document.createElement('label'); sLbl.textContent = 'Style'; sRow.appendChild(sLbl);
+    const sGroup = document.createElement('div');
+    sGroup.className = 'seg-group';
+    EDGE_STYLES.forEach(opt => {
+      const b = document.createElement('button');
+      b.textContent = opt.label;
+      if ((item.style || DEFAULT_EDGE_STYLE) === opt.key) b.classList.add('active');
+      b.addEventListener('click', () => {
+        item.style = opt.key;
+        sGroup.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        render();
+      });
+      sGroup.appendChild(b);
+    });
+    sRow.appendChild(sGroup);
+    ctxMenu.appendChild(sRow);
+
+    const hideRow = document.createElement('label');
+    hideRow.className = 'menu-row check';
+    const hcb = document.createElement('input');
+    hcb.type = 'checkbox';
+    hcb.checked = !!item.hidden;
+    hcb.addEventListener('change', () => { item.hidden = hcb.checked; render(); });
+    hideRow.appendChild(hcb);
+    const htxt = document.createElement('span');
+    htxt.textContent = 'Hide ' + (kind === 'circle' ? 'circle' : 'ellipse');
+    hideRow.appendChild(htxt);
+    ctxMenu.appendChild(hideRow);
+
+    ctxMenu.appendChild(menuColorRow('Curve', item.color, '#111827', (col) => { item.color = col; render(); }));
+
+    ctxMenu.appendChild(menuSep());
+    ctxMenu.appendChild(menuAction('Delete major arc…', () => {
+      state.tool = { name: 'arc-delete', step: 0,
+        data: { shapeKind: kind, shapeId: id, side: 'major' } };
+      updateToolButtons(); updateStatusHint();
+      closeMenu();
+    }));
+    ctxMenu.appendChild(menuAction('Delete minor arc…', () => {
+      state.tool = { name: 'arc-delete', step: 0,
+        data: { shapeKind: kind, shapeId: id, side: 'minor' } };
+      updateToolButtons(); updateStatusHint();
+      closeMenu();
+    }));
+    if (item.visibleArc) {
+      ctxMenu.appendChild(menuAction('Restore full curve', () => {
+        item.visibleArc = null; render(); closeMenu();
+      }));
+    }
+
+    ctxMenu.appendChild(menuSep());
+    ctxMenu.appendChild(menuAction(kind === 'circle' ? 'Delete circle' : 'Delete ellipse',
+      () => { if (kind === 'circle') deleteCircle(id); else deleteEllipse(id); closeMenu(); }, true));
+
+    positionMenu(evt);
+    render();
+  }
+
+  document.addEventListener('pointerdown', (evt) => {
+    if (!state.menu) return;
+    if (ctxMenu.contains(evt.target)) return;
+    closeMenu();
+  });
+  ctxMenu.addEventListener('contextmenu', (evt) => evt.preventDefault());
+
+  document.addEventListener('keydown', (evt) => {
+    const tag = (evt.target && evt.target.tagName) || '';
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA';
+    if (evt.key === 'Escape') {
+      if (state.menu) { closeMenu(); return; }
+      if (state.tool.name !== 'vertex') { resetTool(); return; }
+      if (state.selection) { clearSelection(); render(); }
+    } else if (!typing && (evt.key === 'Delete' || evt.key === 'Backspace')) {
+      if (state.selection) {
+        if (state.selection.kind === 'vertex') deleteVertex(state.selection.id);
+        else if (state.selection.kind === 'edge') deleteEdge(state.selection.id);
+        else if (state.selection.kind === 'angle') deleteAngle(state.selection.id);
+        else if (state.selection.kind === 'circle') deleteCircle(state.selection.id);
+        else if (state.selection.kind === 'ellipse') deleteEllipse(state.selection.id);
+      }
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    if (!state.vertices.length && !state.edges.length && !state.angles.length
+        && !state.circles.length && !state.ellipses.length) return;
+    if (confirm('Clear everything on the canvas?')) clearAll();
+  });
+
+  // ---------- Tool buttons ----------
+  document.querySelectorAll('#left-tools [data-tool]').forEach(el => {
+    el.addEventListener('click', (evt) => {
+      evt.stopPropagation();
+      const name = el.getAttribute('data-tool');
+      if (state.tool.name === name) setTool('vertex');
+      else setTool(name);
+    });
+  });
+  updateToolButtons();
+  updateStatusHint();
+
+  function applyArcDeletion(shapeKind, shapeId, vId1, vId2, side) {
+    const v1 = findVertexById(vId1);
+    const v2 = findVertexById(vId2);
+    if (!v1 || !v2) return;
+    const shape = shapeKind === 'circle' ? findCircleById(shapeId) : findEllipseById(shapeId);
+    if (!shape) return;
+    let t1, t2;
+    if (shapeKind === 'circle') {
+      const g = circleGeom(shape);
+      if (!g) return;
+      t1 = circleAngle(g, v1.x, v1.y);
+      t2 = circleAngle(g, v2.x, v2.y);
+    } else {
+      const g = ellipseGeom(shape);
+      if (!g) return;
+      t1 = ellipseParamAngle(g, v1.x, v1.y);
+      t2 = ellipseParamAngle(g, v2.x, v2.y);
+    }
+    const norm = (a) => { a = a % (2*Math.PI); if (a < 0) a += 2*Math.PI; return a; };
+    // s1 = CCW sweep from v1 to v2; s2 = CCW sweep from v2 to v1.
+    // The phrase "side === 'minor'" means we keep the shorter (minor) of the two
+    // arcs and erase the major. The user's intent is preserved across drags by
+    // remembering the ENDPOINT IDS — the path builders re-derive angles each
+    // render, so the kept arc travels with the vertices.
+    const s1 = norm(t2 - t1);
+    const s2 = 2 * Math.PI - s1;
+    const keepV1toV2 = (side === 'minor') ? (s1 < s2) : (s1 > s2);
+    shape.visibleArc = keepV1toV2
+      ? { aId: vId1, bId: vId2 }
+      : { aId: vId2, bId: vId1 };
+    render();
+  }
+
+  // ---------- Tweaks popover ----------
+  const tweaksBtn = document.getElementById('tweaks-btn');
+  const tweaksPopover = document.getElementById('tweaks-popover');
+  const lineScaleInput = document.getElementById('line-scale');
+  const lineScaleVal = document.getElementById('line-scale-val');
+  const fontScaleInput = document.getElementById('font-scale');
+  const fontScaleVal = document.getElementById('font-scale-val');
+  const italicVertexInput = document.getElementById('italic-vertex');
+  const tweaksReset = document.getElementById('tweaks-reset');
+  const fontFamilyGroup = document.getElementById('font-family-group');
+  const angleUnitGroup = document.getElementById('angle-unit-group');
+
+  function syncSegGroup(group, value) {
+    group.querySelectorAll('button').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-val') === value);
+    });
+  }
+  function syncTweaksUI() {
+    lineScaleInput.value = state.tweaks.lineScale;
+    fontScaleInput.value = state.tweaks.fontScale;
+    italicVertexInput.checked = state.tweaks.italicVertex;
+    lineScaleVal.textContent = state.tweaks.lineScale.toFixed(2) + '×';
+    fontScaleVal.textContent = state.tweaks.fontScale.toFixed(2) + '×';
+    svg.classList.toggle('italic-vertex', state.tweaks.italicVertex);
+    svg.classList.toggle('font-sans', state.tweaks.fontFamily === 'sans');
+    syncSegGroup(fontFamilyGroup, state.tweaks.fontFamily);
+    syncSegGroup(angleUnitGroup, state.tweaks.angleUnit);
+  }
+  syncTweaksUI();
+
+  fontFamilyGroup.addEventListener('click', (evt) => {
+    const b = evt.target.closest('button[data-val]');
+    if (!b) return;
+    state.tweaks.fontFamily = b.getAttribute('data-val');
+    svg.classList.toggle('font-sans', state.tweaks.fontFamily === 'sans');
+    syncSegGroup(fontFamilyGroup, state.tweaks.fontFamily);
+  });
+  angleUnitGroup.addEventListener('click', (evt) => {
+    const b = evt.target.closest('button[data-val]');
+    if (!b) return;
+    state.tweaks.angleUnit = b.getAttribute('data-val');
+    syncSegGroup(angleUnitGroup, state.tweaks.angleUnit);
+    render();
+  });
+
+  lineScaleInput.addEventListener('input', () => {
+    state.tweaks.lineScale = Number(lineScaleInput.value);
+    lineScaleVal.textContent = state.tweaks.lineScale.toFixed(2) + '×';
+    render();
+  });
+  fontScaleInput.addEventListener('input', () => {
+    state.tweaks.fontScale = Number(fontScaleInput.value);
+    fontScaleVal.textContent = state.tweaks.fontScale.toFixed(2) + '×';
+    render();
+  });
+  italicVertexInput.addEventListener('change', () => {
+    state.tweaks.italicVertex = italicVertexInput.checked;
+    svg.classList.toggle('italic-vertex', state.tweaks.italicVertex);
+  });
+  tweaksReset.addEventListener('click', () => {
+    state.tweaks = { ...DEFAULT_TWEAKS };
+    syncTweaksUI();
+    render();
+  });
+  tweaksBtn.addEventListener('click', (evt) => {
+    evt.stopPropagation();
+    tweaksPopover.classList.toggle('open');
+  });
+  document.addEventListener('pointerdown', (evt) => {
+    if (!tweaksPopover.classList.contains('open')) return;
+    if (tweaksPopover.contains(evt.target) || tweaksBtn.contains(evt.target)) return;
+    tweaksPopover.classList.remove('open');
+  });
+
+  // ---------- Export PNG ----------
+  const exportBtn = document.getElementById('export-btn');
+
+  function computeContentBBox() {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const expand = (x, y) => {
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    };
+    const expandBox = (cx, cy, w, h) => {
+      expand(cx - w / 2, cy - h / 2);
+      expand(cx + w / 2, cy + h / 2);
+    };
+
+    for (const v of state.vertices) {
+      if (intersectionVertexIsLost(v)) continue;
+      if (!v.hidden) { expand(v.x - VERTEX_R, v.y - VERTEX_R); expand(v.x + VERTEX_R, v.y + VERTEX_R); }
+      if (v.label) {
+        const pos = labelPos('vertex', v);
+        const bb = approxLabelBBox(v.label, vertexFontSize());
+        expandBox(pos.x, pos.y, bb.w, bb.h);
+      }
+    }
+    for (const a of state.angles) {
+      if (!isAngleAlive(a)) continue;
+      const gm = angleGeom(a);
+      if (!gm.ok) continue;
+      const level = currentAngleLevels.get(a.id) || 0;
+      const r = angleRadiusForLevel(a, level) + MARKER_SIZE;
+      expand(gm.vx - r, gm.vy - r); expand(gm.vx + r, gm.vy + r);
+      const shown = displayAngleLabel(a.label);
+      if (shown) {
+        const pos = labelPos('angle', a);
+        const bb = approxLabelBBox(shown, angleFontSize());
+        expandBox(pos.x, pos.y, bb.w, bb.h);
+      }
+    }
+    for (const e of state.edges) {
+      if (!edgeIsAlive(e)) continue;
+      const a = findVertexById(e.v1);
+      const b = findVertexById(e.v2);
+      if (!a || !b) continue;
+      if (!e.hidden) {
+        const half = (e.width * state.tweaks.lineScale) / 2;
+        expand(Math.min(a.x, b.x) - half, Math.min(a.y, b.y) - half);
+        expand(Math.max(a.x, b.x) + half, Math.max(a.y, b.y) + half);
+      }
+      if (e.label) {
+        const pos = labelPos('edge', e);
+        const bb = approxLabelBBox(e.label, edgeFontSize());
+        expandBox(pos.x, pos.y, bb.w, bb.h);
+      }
+    }
+    for (const c of state.circles) {
+      if (c.hidden) continue;
+      if (isGhostVertex(c.centerId) || isGhostVertex(c.perimId)) continue;
+      const g = circleGeom(c);
+      if (!g) continue;
+      expand(g.cx - g.r, g.cy - g.r); expand(g.cx + g.r, g.cy + g.r);
+    }
+    for (const e of state.ellipses) {
+      if (e.hidden) continue;
+      if (isGhostVertex(e.centerId) || isGhostVertex(e.p1Id) || isGhostVertex(e.p2Id)) continue;
+      const g = ellipseGeom(e);
+      if (!g) continue;
+      const ct = Math.cos(g.theta), st = Math.sin(g.theta);
+      const rx = Math.sqrt((g.a * ct) ** 2 + (g.b * st) ** 2);
+      const ry = Math.sqrt((g.a * st) ** 2 + (g.b * ct) ** 2);
+      expand(g.cx - rx, g.cy - ry); expand(g.cx + rx, g.cy + ry);
+    }
+    if (!isFinite(minX)) return null;
+    return { minX, minY, maxX, maxY };
+  }
+
+  function buildExportSVG() {
+    const bb = computeContentBBox();
+    if (!bb) return null;
+    const margin = 2 * 96 / 72; // 2pt → CSS px (≈ 2.667)
+    const x = bb.minX - margin;
+    const y = bb.minY - margin;
+    const w = (bb.maxX - bb.minX) + 2 * margin;
+    const h = (bb.maxY - bb.minY) + 2 * margin;
+
+    const root = document.createElementNS(SVG_NS, 'svg');
+    root.setAttribute('xmlns', SVG_NS);
+    root.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+    root.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
+
+    // Curves (below edges in stacking order). Hidden curves are skipped.
+    const appendCurvePath = (d, item) => {
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('stroke', item.color || '#111827');
+      path.setAttribute('fill', 'none');
+      applyStrokeStyle(path, item);
+      root.appendChild(path);
+    };
+    for (const c of state.circles) {
+      if (c.hidden) continue;
+      if (isGhostVertex(c.centerId) || isGhostVertex(c.perimId)) continue;
+      const g = circleGeom(c);
+      if (!g) continue;
+      appendCurvePath(circlePathD(g, resolveVisibleArc(c.visibleArc, 'circle', g)), c);
+    }
+    for (const e of state.ellipses) {
+      if (e.hidden) continue;
+      if (isGhostVertex(e.centerId) || isGhostVertex(e.p1Id) || isGhostVertex(e.p2Id)) continue;
+      const g = ellipseGeom(e);
+      if (!g) continue;
+      appendCurvePath(ellipsePathD(g, resolveVisibleArc(e.visibleArc, 'ellipse', g)), e);
+    }
+
+    // Edges. Hidden edges skip the line + marks but keep the label (matches
+    // on-screen hidden behaviour).
+    for (const e of state.edges) {
+      if (!edgeIsAlive(e)) continue;
+      const a = findVertexById(e.v1);
+      const b = findVertexById(e.v2);
+      if (!a || !b) continue;
+      if (!e.hidden) {
+        const line = document.createElementNS(SVG_NS, 'line');
+        line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+        line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+        line.setAttribute('stroke', e.color || '#111827');
+        line.setAttribute('fill', 'none');
+        applyStrokeStyle(line, e);
+        root.appendChild(line);
+        appendExportEdgeMarks(root, e);
+      }
+      if (e.label) {
+        appendExportText(root, labelPos('edge', e), e.label, edgeFontSize(), e.labelColor || '#374151',
+          { parts: edgeLabelParts(e.label) });
+      }
+    }
+
+    // Angles
+    for (const a of state.angles) {
+      if (!isAngleAlive(a)) continue;
+      const gm = angleGeom(a);
+      if (!gm.ok) continue;
+      const level = currentAngleLevels.get(a.id) || 0;
+      const r = angleRadiusForLevel(a, level);
+      const stroke = ANGLE_BASE_STROKE * state.tweaks.lineScale;
+      const color = a.color || '#111827';
+      if (a.marker === 'arc' || a.marker === 'right') {
+        const d = a.marker === 'right' ? buildSquarePath(gm, r) : buildArcPath(gm, r, a.reflex);
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('stroke', color);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke-width', stroke);
+        root.appendChild(path);
+      } else {
+        const c = angleMarkerCenter(a, gm, r);
+        if (a.marker === 'cross') {
+          const path = document.createElementNS(SVG_NS, 'path');
+          path.setAttribute('d', buildCrossPath(c.x, c.y, MARKER_SIZE));
+          path.setAttribute('stroke', color);
+          path.setAttribute('fill', 'none');
+          path.setAttribute('stroke-width', stroke);
+          path.setAttribute('stroke-linecap', 'round');
+          root.appendChild(path);
+        } else {
+          const circ = document.createElementNS(SVG_NS, 'circle');
+          circ.setAttribute('cx', c.x); circ.setAttribute('cy', c.y);
+          circ.setAttribute('r', MARKER_SIZE);
+          circ.setAttribute('stroke', color);
+          circ.setAttribute('stroke-width', stroke);
+          circ.setAttribute('fill', a.marker === 'closed' ? color : 'none');
+          root.appendChild(circ);
+        }
+      }
+      const shown = displayAngleLabel(a.label);
+      if (shown) appendExportText(root, labelPos('angle', a), shown, angleFontSize(), a.labelColor || '#111827');
+    }
+
+    // Vertices (after edges so dots sit on top). Ghost intersection vertices
+    // (and any labels on them) are skipped entirely.
+    for (const v of state.vertices) {
+      if (intersectionVertexIsLost(v)) continue;
+      if (!v.hidden) {
+        const c = document.createElementNS(SVG_NS, 'circle');
+        c.setAttribute('cx', v.x); c.setAttribute('cy', v.y);
+        c.setAttribute('r', VERTEX_R);
+        c.setAttribute('fill', v.color || '#111827');
+        root.appendChild(c);
+      }
+      if (v.label) {
+        const style = state.tweaks.italicVertex
+          ? { italic: true }
+          : { weight: '600' };
+        appendExportText(root, labelPos('vertex', v), v.label, vertexFontSize(), v.labelColor || '#111827', style);
+      }
+    }
+
+    return { root, w, h };
+  }
+
+  function appendExportEdgeMarks(parent, edge) {
+    if (!edge.ticks && !edge.arrows) return;
+    const a = findVertexById(edge.v1);
+    const b = findVertexById(edge.v2);
+    if (!a || !b) return;
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const baseEx = dx / len, baseEy = dy / len;
+    const baseNx = -baseEy, baseNy = baseEx;
+    const strokeW = ANGLE_BASE_STROKE * state.tweaks.lineScale;
+    const hasBoth = edge.ticks > 0 && edge.arrows > 0;
+    const groupGap = 7;
+    const tickCenterOff = hasBoth ? -groupGap : 0;
+    const arrowCenterOff = hasBoth ? groupGap : 0;
+
+    if (edge.ticks > 0) {
+      const half = 5, spacing = 4;
+      const start = tickCenterOff - (edge.ticks - 1) * spacing / 2;
+      for (let i = 0; i < edge.ticks; i++) {
+        const off = start + i * spacing;
+        const cx = mx + baseEx * off, cy = my + baseEy * off;
+        const line = document.createElementNS(SVG_NS, 'line');
+        line.setAttribute('x1', cx + baseNx * half); line.setAttribute('y1', cy + baseNy * half);
+        line.setAttribute('x2', cx - baseNx * half); line.setAttribute('y2', cy - baseNy * half);
+        line.setAttribute('stroke', '#111827');
+        line.setAttribute('stroke-width', strokeW);
+        line.setAttribute('stroke-linecap', 'round');
+        parent.appendChild(line);
+      }
+    }
+    if (edge.arrows > 0) {
+      const { ex, ey } = preferredEdgeDir(a, b);
+      const nx = -ey, ny = ex;
+      const armLen = 5, armHalf = 4, spacing = 6;
+      const blockCx = mx + baseEx * arrowCenterOff;
+      const blockCy = my + baseEy * arrowCenterOff;
+      const start = -(edge.arrows - 1) * spacing / 2;
+      for (let i = 0; i < edge.arrows; i++) {
+        const off = start + i * spacing;
+        const cx = blockCx + ex * off, cy = blockCy + ey * off;
+        const tipX = cx + ex * armLen, tipY = cy + ey * armLen;
+        const upX = cx + nx * armHalf, upY = cy + ny * armHalf;
+        const dnX = cx - nx * armHalf, dnY = cy - ny * armHalf;
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('d', `M ${upX} ${upY} L ${tipX} ${tipY} L ${dnX} ${dnY}`);
+        path.setAttribute('stroke', '#111827');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke-width', strokeW);
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        parent.appendChild(path);
+      }
+    }
+  }
+
+  function appendExportText(parent, pos, text, fontSize, fill, opts) {
+    const t = document.createElementNS(SVG_NS, 'text');
+    t.setAttribute('x', pos.x);
+    t.setAttribute('y', pos.y);
+    t.setAttribute('font-family', exportFontFamily());
+    t.setAttribute('font-size', fontSize);
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('dominant-baseline', 'middle');
+    t.setAttribute('fill', fill);
+    if (opts && opts.italic) t.setAttribute('font-style', 'italic');
+    if (opts && opts.weight) t.setAttribute('font-weight', opts.weight);
+    if (opts && opts.parts && opts.parts.length) {
+      for (const p of opts.parts) {
+        const ts = document.createElementNS(SVG_NS, 'tspan');
+        ts.setAttribute('font-style', p.italic ? 'italic' : 'normal');
+        ts.textContent = p.text;
+        t.appendChild(ts);
+      }
+    } else {
+      t.textContent = text;
+    }
+    parent.appendChild(t);
+  }
+  function exportFontFamily() {
+    return state.tweaks.fontFamily === 'sans'
+      ? 'Arial, Helvetica, sans-serif'
+      : '"Times New Roman", Times, Georgia, serif';
+  }
+
+  function exportPNG() {
+    const built = buildExportSVG();
+    if (!built) { alert('Nothing to export — add some content first.'); return; }
+    const { root, w, h } = built;
+
+    const scale = 600 / 96; // CSS px → 600 DPI device px
+    const pxW = Math.max(1, Math.round(w * scale));
+    const pxH = Math.max(1, Math.round(h * scale));
+    root.setAttribute('width', pxW);
+    root.setAttribute('height', pxH);
+
+    const xml = new XMLSerializer().serializeToString(root);
+    // Use a data URL (avoids cross-origin tainting in some browsers).
+    const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = pxW; canvas.height = pxH;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, pxW, pxH); // transparent
+      ctx.drawImage(img, 0, 0, pxW, pxH);
+      canvas.toBlob((blob) => {
+        if (!blob) { alert('Export failed: PNG encoding error.'); return; }
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'diagram.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(a.href), 500);
+      }, 'image/png');
+    };
+    img.onerror = () => alert('Export failed: could not rasterize SVG.');
+    img.src = url;
+  }
+
+  exportBtn.addEventListener('click', exportPNG);
+
+  render();
+})();
+</script>
+</body>
+</html>
