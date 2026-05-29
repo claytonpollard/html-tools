@@ -1999,7 +1999,7 @@
       if (styleKey === 'dotted') el.setAttribute('stroke-linecap', 'round');
     } else {
       el.removeAttribute('stroke-dasharray');
-      el.removeAttribute('stroke-linecap');
+      el.setAttribute('stroke-linecap', 'round');
     }
   }
 
